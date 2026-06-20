@@ -303,6 +303,18 @@ def make_zip_by_store(evidencias: pd.DataFrame) -> BytesIO:
     return buffer
 
 
+def delete_evidence_record(evidencias_df: pd.DataFrame, evidence_id: str) -> pd.DataFrame:
+    """Elimina una evidencia del registro y borra el archivo físico si existe."""
+    target = evidencias_df[evidencias_df["ID"].astype(str) == str(evidence_id)]
+    if not target.empty:
+        archivo = str(target.iloc[0].get("Archivo", ""))
+        try:
+            if archivo and Path(archivo).exists():
+                Path(archivo).unlink()
+        except Exception:
+            pass
+    return evidencias_df[evidencias_df["ID"].astype(str) != str(evidence_id)].reset_index(drop=True)
+
 st.markdown("""
 <style>
 .main-title {font-size: 34px; font-weight: 800; color: #3366CC; margin-bottom: 0px;}
@@ -446,52 +458,105 @@ with tab1:
 
 with tab2:
     st.subheader("Carga de evidencias por tienda")
-    st.caption("Los conceptos disponibles salen automáticamente de los encabezados activos del checklist.")
+    st.caption("Selecciona la tienda. Las actividades se muestran automáticamente de acuerdo con los encabezados activos del checklist.")
 
-    tienda = st.selectbox("Tienda", TIENDAS_DEFAULT)
-    concepto = st.selectbox("Concepto del checklist", active_concepts if active_concepts else ["Sin conceptos activos"])
-    responsable = st.text_input("Responsable")
-    comentario = st.text_area("Comentario de tienda")
-    files = st.file_uploader(
-        "Cargar evidencia",
-        type=["jpg", "jpeg", "png", "webp", "pdf"],
-        accept_multiple_files=True
-    )
+    tienda = st.selectbox("Filtro por tienda", TIENDAS_DEFAULT, key="tienda_carga_evidencia")
+    responsable = st.text_input("Responsable", key="responsable_general")
 
-    if st.button("Guardar evidencia", type="primary"):
-        if not files:
-            st.warning("Carga al menos una evidencia.")
-        elif not active_concepts:
-            st.warning("No hay conceptos activos en el checklist.")
-        else:
-            new_rows = []
-            store_dir = EVIDENCE_DIR / tienda / str(semana) / concepto.replace("/", "-")
-            store_dir.mkdir(parents=True, exist_ok=True)
-            for file in files:
-                evidence_id = str(uuid.uuid4())[:8]
-                safe_name = f"{evidence_id}_{file.name}"
-                path = store_dir / safe_name
-                path.write_bytes(file.getbuffer())
-                new_rows.append({
-                    "ID": evidence_id,
-                    "Semana": semana,
-                    "Tienda": tienda,
-                    "Concepto": concepto,
-                    "Archivo": str(path),
-                    "Comentario_Tienda": comentario,
-                    "Responsable": responsable,
-                    "Fecha_Carga": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Estatus": "Pendiente",
-                    "Comentario_Admin": "",
-                    "Fecha_Revision": ""
-                })
-            evidencias_new = pd.concat([evidencias, pd.DataFrame(new_rows)], ignore_index=True)
-            save_df(evidencias_new, EVIDENCE_FILE)
-            st.success("Evidencia guardada. Queda pendiente de validación por administrador.")
-            st.rerun()
+    if not active_concepts:
+        st.warning("No hay actividades activas en el checklist. El administrador debe configurar al menos un encabezado activo.")
+    else:
+        st.markdown("### Actividades del checklist")
+        st.caption("En cada actividad puedes cargar evidencia desde cámara o seleccionarla desde galería/archivos.")
+
+        for concepto in active_concepts:
+            with st.expander(f"Actividad: {concepto}", expanded=False):
+                comentario = st.text_area(
+                    "Comentario de tienda",
+                    key=f"comentario_{tienda}_{concepto}"
+                )
+
+                cam_col, gal_col = st.columns(2)
+                with cam_col:
+                    st.markdown("**Abrir cámara**")
+                    camera_file = st.camera_input(
+                        "Tomar foto",
+                        key=f"camara_{tienda}_{concepto}"
+                    )
+                with gal_col:
+                    st.markdown("**Seleccionar desde galería / archivo**")
+                    gallery_files = st.file_uploader(
+                        "Cargar desde galería",
+                        type=["jpg", "jpeg", "png", "webp", "pdf"],
+                        accept_multiple_files=True,
+                        key=f"galeria_{tienda}_{concepto}"
+                    )
+
+                if st.button("Guardar evidencia de esta actividad", type="primary", key=f"guardar_{tienda}_{concepto}"):
+                    files_to_save = []
+                    if camera_file is not None:
+                        files_to_save.append(camera_file)
+                    if gallery_files:
+                        files_to_save.extend(gallery_files)
+
+                    if not files_to_save:
+                        st.warning("Carga al menos una evidencia desde cámara o galería.")
+                    else:
+                        new_rows = []
+                        store_dir = EVIDENCE_DIR / tienda / str(semana) / concepto.replace("/", "-")
+                        store_dir.mkdir(parents=True, exist_ok=True)
+
+                        for file in files_to_save:
+                            evidence_id = str(uuid.uuid4())[:8]
+                            original_name = getattr(file, "name", "camara.png") or "camara.png"
+                            safe_name = f"{evidence_id}_{original_name}"
+                            path = store_dir / safe_name
+                            path.write_bytes(file.getbuffer())
+                            new_rows.append({
+                                "ID": evidence_id,
+                                "Semana": semana,
+                                "Tienda": tienda,
+                                "Concepto": concepto,
+                                "Archivo": str(path),
+                                "Comentario_Tienda": comentario,
+                                "Responsable": responsable,
+                                "Fecha_Carga": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "Estatus": "Pendiente",
+                                "Comentario_Admin": "",
+                                "Fecha_Revision": ""
+                            })
+
+                        evidencias_new = pd.concat([evidencias, pd.DataFrame(new_rows)], ignore_index=True)
+                        save_df(evidencias_new, EVIDENCE_FILE)
+                        st.success("Evidencia guardada. Queda pendiente de validación por administrador.")
+                        st.rerun()
 
     st.subheader("Mis evidencias cargadas")
-    st.dataframe(evidencias[evidencias["Tienda"] == tienda], width="stretch", hide_index=True)
+    st.caption("Si cargaste una evidencia duplicada, puedes eliminarla con el botón rojo de menos.")
+    mis_evidencias = evidencias[evidencias["Tienda"] == tienda].copy()
+
+    if mis_evidencias.empty:
+        st.info("Esta tienda todavía no tiene evidencias cargadas.")
+    else:
+        for _, ev in mis_evidencias.sort_values("Fecha_Carga", ascending=False).iterrows():
+            c_info, c_status, c_delete = st.columns([6, 2, 1])
+            with c_info:
+                st.markdown(
+                    f"**{ev['Concepto']}**  \n"
+                    f"Semana: {ev['Semana']} | Responsable: {ev['Responsable']} | Fecha: {ev['Fecha_Carga']}"
+                )
+                if str(ev.get("Comentario_Tienda", "")):
+                    st.caption(f"Comentario: {ev.get('Comentario_Tienda', '')}")
+            with c_status:
+                st.write(f"Estatus: **{ev['Estatus']}**")
+            with c_delete:
+                if st.button("🔴 -", key=f"delete_ev_{ev['ID']}", help="Eliminar evidencia duplicada"):
+                    evidencias_new = delete_evidence_record(evidencias, ev["ID"])
+                    save_df(evidencias_new, EVIDENCE_FILE)
+                    st.success("Evidencia eliminada.")
+                    st.rerun()
+
+        st.dataframe(mis_evidencias, width="stretch", hide_index=True)
 
 with tab3:
     st.subheader("Validación de evidencias")
