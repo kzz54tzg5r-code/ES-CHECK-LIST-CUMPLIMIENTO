@@ -244,9 +244,9 @@ def _load_font(size: int, bold: bool = False):
 
 def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     """Genera PNG legible del checklist general con textos visibles y alta calidad."""
-    font = _load_font(34, bold=True)
-    font_small = _load_font(32, bold=True)
-    title_font = _load_font(46, bold=True)
+    font = _load_font(58, bold=True)
+    font_small = _load_font(54, bold=True)
+    title_font = _load_font(78, bold=True)
 
     header_bg = (47, 103, 168)
     gray_bg = (166, 166, 166)
@@ -265,23 +265,23 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     col_widths = []
     for col in cols:
         if col == "Tienda":
-            base = 180
+            base = 260
         elif col == "% Cumplimiento":
-            base = 330
+            base = 470
         else:
-            base = max(310, min(520, 22 * len(str(col)) + 120))
+            base = max(560, min(820, 32 * len(str(col)) + 220))
         col_widths.append(base)
 
-    row_h = 86
-    title_h = 120
-    margin = 26
+    row_h = 150
+    title_h = 190
+    margin = 44
     width = sum(col_widths) + margin * 2
     height = title_h + row_h * (len(df) + 1) + margin * 2
     img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
     draw.rectangle([0, 0, width, title_h + margin], fill=(247, 249, 255))
-    draw.text((margin, 34), title, fill=blue_text, font=title_font)
+    draw.text((margin, 56), title, fill=blue_text, font=title_font)
 
     y = title_h
     x = margin
@@ -289,7 +289,7 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
         bg = gray_bg if i == 0 or col == "% Cumplimiento" else header_bg
         draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=3)
         lines = wrap_text_to_width(draw, str(col), font, col_widths[i] - 20)
-        line_gap = 38
+        line_gap = 64
         total_h = len(lines) * line_gap
         ty = y + (row_h - total_h) / 2
         for line in lines:
@@ -323,7 +323,7 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
                         num = 0
                     dot_color = green if num >= 80 else amber if num >= 50 else red
                     text_val = val
-                dot = 34
+                dot = 58
                 text_bbox = draw.textbbox((0, 0), text_val, font=font_small)
                 text_w = text_bbox[2] - text_bbox[0]
                 text_h = text_bbox[3] - text_bbox[1]
@@ -335,7 +335,7 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
             else:
                 text_val = val
                 lines = wrap_text_to_width(draw, text_val, font_small, col_widths[i] - 20)
-                line_gap = 36
+                line_gap = 60
                 total_h = len(lines) * line_gap
                 ty = y + (row_h - total_h) / 2
                 for line in lines:
@@ -345,8 +345,7 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
                     ty += line_gap
             x += col_widths[i]
 
-    # Exportar más grande para alta resolución, pero con textos proporcionales.
-    img = img.resize((width * 2, height * 2), Image.Resampling.LANCZOS)
+    # Exportar en alta resolución con textos grandes y nítidos.
     buffer = BytesIO()
     img.save(buffer, format="PNG", optimize=False, dpi=(300, 300))
     buffer.seek(0)
@@ -445,6 +444,53 @@ def make_activity_control(evidencias: pd.DataFrame, config: pd.DataFrame, semana
     return pd.DataFrame(rows)
 
 
+
+def make_activity_kpis(matrix_df: pd.DataFrame, conceptos: list[str]) -> pd.DataFrame:
+    """Calcula el porcentaje de cumplimiento por cada actividad/columna activa."""
+    rows = []
+    for concepto in conceptos:
+        if concepto not in matrix_df.columns:
+            continue
+        serie = matrix_df[concepto].astype(str)
+        requeridos = int((serie != "N/A").sum())
+        aceptados = int((serie == "OK").sum())
+        pendientes = int((serie == "PEND").sum())
+        rechazados = int((serie == "NO").sum())
+        na = int((serie == "N/A").sum())
+        pct = round((aceptados / requeridos * 100), 0) if requeridos else 0
+        rows.append({
+            "Actividad": concepto,
+            "% Cumplimiento": pct,
+            "Aceptadas": aceptados,
+            "Pendientes": pendientes,
+            "Rechazadas": rechazados,
+            "N/A": na,
+            "Requeridas": requeridos,
+        })
+    return pd.DataFrame(rows)
+
+
+def render_activity_cards(activity_df: pd.DataFrame) -> str:
+    """Tarjetas superiores: cumplimiento por actividad, no por estatus general."""
+    if activity_df.empty:
+        return '<div class="activity-card"><div class="activity-title">Sin actividades activas</div><div class="activity-number">0%</div></div>'
+    parts = ['<div class="activity-wrap">']
+    for _, row in activity_df.iterrows():
+        pct = float(row["% Cumplimiento"])
+        cls = "good" if pct >= 90 else "mid" if pct >= 70 else "bad"
+        actividad = html.escape(str(row["Actividad"]))
+        parts.append(f"""
+        <div class="activity-card {cls}">
+            <div class="activity-title">{actividad}</div>
+            <div class="activity-number">{pct:.0f}%</div>
+            <div class="activity-label">Cumplimiento</div>
+            <div class="activity-bar"><span style="width:{max(0,min(100,pct)):.0f}%"></span></div>
+            <div class="activity-foot">{int(row['Aceptadas'])} / {int(row['Requeridas'])} aceptadas</div>
+        </div>
+        """)
+    parts.append('</div>')
+    return "".join(parts)
+
 def wrap_text_to_width(draw, text: str, font, max_width: int):
     """Divide texto en líneas para que sí se vea completo en la imagen PNG."""
     words = str(text).split()
@@ -485,6 +531,15 @@ st.markdown("""
 .kpi-card {background: #f7f9ff; padding: 18px; border-radius: 14px; border-left: 7px solid #3366CC; box-shadow: 0 2px 8px rgba(0,0,0,.06);}
 .kpi-number {font-size: 28px; font-weight: 800; color: #3366CC;}
 .kpi-label {font-size: 13px; color: #666;}
+.activity-wrap{display:flex;gap:14px;overflow-x:auto;padding:8px 0 14px 0;}
+.activity-card{min-width:230px;background:#f7f9ff;border-radius:14px;padding:16px;border-left:7px solid #3366CC;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.activity-card.good{border-left-color:#2ca25f}.activity-card.mid{border-left-color:#f39c12}.activity-card.bad{border-left-color:#e31a1c}
+.activity-title{font-size:13px;font-weight:800;color:#2f3142;white-space:normal;min-height:34px;}
+.activity-number{font-size:30px;font-weight:900;color:#3366CC;margin-top:8px;}
+.activity-card.good .activity-number{color:#2ca25f}.activity-card.mid .activity-number{color:#f39c12}.activity-card.bad .activity-number{color:#e31a1c}
+.activity-label{font-size:12px;color:#666;margin-top:2px}.activity-foot{font-size:12px;color:#555;margin-top:8px;}
+.activity-bar{height:8px;background:#e4e6ef;border-radius:999px;margin-top:10px;overflow:hidden}.activity-bar span{display:block;height:100%;background:#3366CC;border-radius:999px;}
+.activity-card.good .activity-bar span{background:#2ca25f}.activity-card.mid .activity-bar span{background:#f39c12}.activity-card.bad .activity-bar span{background:#e31a1c}
 </style>
 """, unsafe_allow_html=True)
 
@@ -508,25 +563,11 @@ with st.sidebar:
 
 active_concepts = config[config["Activo"] == True]["Concepto"].tolist()
 
-# KPIs
+# KPIs por actividad
 matrix = calculate_matrix(evidencias, config, semana, manual)
-try:
-    cumplimiento_prom = matrix["% Cumplimiento"].str.replace("%", "", regex=False).astype(float).mean()
-except Exception:
-    cumplimiento_prom = 0
-pendientes = int((evidencias["Estatus"] == "Pendiente").sum())
-aceptadas = int((evidencias["Estatus"] == "Aceptada").sum())
-rechazadas = int((evidencias["Estatus"] == "Rechazada").sum())
-
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{fmt_pct(cumplimiento_prom)}</div><div class="kpi-label">Cumplimiento promedio</div></div>', unsafe_allow_html=True)
-with c2:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{aceptadas}</div><div class="kpi-label">Aceptadas</div></div>', unsafe_allow_html=True)
-with c3:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{pendientes}</div><div class="kpi-label">Pendientes</div></div>', unsafe_allow_html=True)
-with c4:
-    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{rechazadas}</div><div class="kpi-label">Rechazadas</div></div>', unsafe_allow_html=True)
+activity_kpis = make_activity_kpis(matrix, active_concepts)
+st.markdown("### % de cumplimiento por actividad")
+st.markdown(render_activity_cards(activity_kpis), unsafe_allow_html=True)
 
 st.divider()
 
@@ -836,6 +877,28 @@ if is_admin:
     with tab4:
         st.subheader("Configuración del checklist")
         st.caption("Edita los encabezados del checklist. Cada encabezado será un concepto obligatorio para cargar evidencias.")
+
+        st.markdown("### Eliminar columna / actividad")
+        if config.empty:
+            st.info("No hay columnas configuradas para eliminar.")
+        else:
+            col_del_1, col_del_2 = st.columns([3, 1])
+            with col_del_1:
+                columna_eliminar = st.selectbox("Selecciona la columna que deseas eliminar", config["Concepto"].astype(str).tolist(), key="columna_eliminar_config")
+            with col_del_2:
+                st.write("")
+                st.write("")
+                if st.button("🗑️ Eliminar columna", type="secondary"):
+                    config_new = config[config["Concepto"].astype(str) != str(columna_eliminar)].copy()
+                    save_df(config_new, CONFIG_FILE)
+                    manual_new = manual[manual["Concepto"].astype(str) != str(columna_eliminar)].copy()
+                    save_df(manual_new, MANUAL_FILE)
+                    st.success(f"Columna eliminada: {columna_eliminar}")
+                    st.rerun()
+            st.warning("Al eliminar una columna, dejará de aparecer en el checklist general. Las evidencias históricas cargadas se conservan en el archivo de evidencias.")
+
+        st.divider()
+        st.markdown("### Agregar o editar columnas")
         edited = st.data_editor(
             config,
             num_rows="dynamic",
