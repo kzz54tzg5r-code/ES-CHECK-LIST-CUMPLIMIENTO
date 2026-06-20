@@ -158,6 +158,29 @@ def calculate_matrix(evidencias: pd.DataFrame, config: pd.DataFrame, semana: str
     return pd.DataFrame(rows)
 
 
+
+def matrix_to_admin_editor(matrix_df: pd.DataFrame, conceptos: list[str]) -> pd.DataFrame:
+    """Convierte la matriz visual a una tabla editable para administrador."""
+    editor = matrix_df[["Tienda"] + conceptos].copy()
+    reverse = {"OK": "Aceptada", "NO": "Rechazada", "PEND": "Pendiente", "N/A": "N/A", "": "Sin marcar"}
+    for concepto in conceptos:
+        editor[concepto] = editor[concepto].map(reverse).fillna("Sin marcar")
+    return editor
+
+
+def save_admin_editor_to_manual(editor_df: pd.DataFrame, manual_df: pd.DataFrame, semana: str, conceptos: list[str]) -> pd.DataFrame:
+    """Guarda lo editado dentro de la tabla del checklist general en la base manual."""
+    base = manual_df.copy()
+    for _, row in editor_df.iterrows():
+        tienda = str(row.get("Tienda", ""))
+        if not tienda:
+            continue
+        for concepto in conceptos:
+            accion = str(row.get(concepto, "Sin marcar"))
+            estatus = "" if accion == "Sin marcar" else accion
+            base = upsert_manual(base, semana, tienda, concepto, estatus, "Modificado desde tabla general")
+    return base
+
 def render_portal_table(df: pd.DataFrame) -> str:
     # Tabla visual con colores tipo Portal Web: encabezados azul/gris y filas alternadas azul claro.
     html_parts = ["<style>",
@@ -220,17 +243,16 @@ def _load_font(size: int, bold: bool = False):
 
 
 def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
-    """Genera una imagen PNG del checklist general en alta resolución, con textos visibles."""
-    scale = 4
-    font = _load_font(18 * scale, bold=True)
-    font_small = _load_font(17 * scale, bold=True)
-    title_font = _load_font(26 * scale, bold=True)
+    """Genera PNG legible del checklist general con textos visibles y alta calidad."""
+    font = _load_font(34, bold=True)
+    font_small = _load_font(32, bold=True)
+    title_font = _load_font(46, bold=True)
 
     header_bg = (47, 103, 168)
     gray_bg = (166, 166, 166)
     even_bg = (217, 232, 246)
     odd_bg = (255, 255, 255)
-    border = (27, 27, 27)
+    border = (20, 20, 20)
     white = (255, 255, 255)
     black = (38, 40, 55)
     green = (105, 173, 147)
@@ -243,45 +265,47 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     col_widths = []
     for col in cols:
         if col == "Tienda":
-            base = 145
+            base = 180
         elif col == "% Cumplimiento":
-            base = 260
+            base = 330
         else:
-            base = 300
-        col_widths.append(base * scale)
+            base = max(310, min(520, 22 * len(str(col)) + 120))
+        col_widths.append(base)
 
-    row_h = 68 * scale
-    title_h = 92 * scale
-    width = sum(col_widths) + 2 * scale
-    height = title_h + row_h * (len(df) + 1) + 2 * scale
+    row_h = 86
+    title_h = 120
+    margin = 26
+    width = sum(col_widths) + margin * 2
+    height = title_h + row_h * (len(df) + 1) + margin * 2
     img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    draw.rectangle([0, 0, width, title_h], fill=(247, 249, 255))
-    draw.text((18 * scale, 24 * scale), title, fill=blue_text, font=title_font)
+    draw.rectangle([0, 0, width, title_h + margin], fill=(247, 249, 255))
+    draw.text((margin, 34), title, fill=blue_text, font=title_font)
 
     y = title_h
-    x = 0
+    x = margin
     for i, col in enumerate(cols):
         bg = gray_bg if i == 0 or col == "% Cumplimiento" else header_bg
-        draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=2 * scale)
-        lines = wrap_text_to_width(draw, str(col), font, col_widths[i] - 18 * scale)
-        total_h = len(lines) * (20 * scale)
-        ty = y + (row_h - total_h) / 2 - 2 * scale
+        draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=3)
+        lines = wrap_text_to_width(draw, str(col), font, col_widths[i] - 20)
+        line_gap = 38
+        total_h = len(lines) * line_gap
+        ty = y + (row_h - total_h) / 2
         for line in lines:
             bbox = draw.textbbox((0, 0), line, font=font)
             tw = bbox[2] - bbox[0]
             draw.text((x + (col_widths[i] - tw) / 2, ty), line, fill=white, font=font)
-            ty += 22 * scale
+            ty += line_gap
         x += col_widths[i]
 
     for r, (_, row) in enumerate(df.iterrows()):
         y = title_h + row_h * (r + 1)
         bg = even_bg if r % 2 else odd_bg
-        x = 0
+        x = margin
         for i, col in enumerate(cols):
             val = str(row[col])
-            draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=2 * scale)
+            draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=3)
 
             if val in ["OK", "NO", "PEND", "N/A"] or col == "% Cumplimiento":
                 if val == "OK":
@@ -299,52 +323,77 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
                         num = 0
                     dot_color = green if num >= 80 else amber if num >= 50 else red
                     text_val = val
-                dot = 24 * scale
+                dot = 34
                 text_bbox = draw.textbbox((0, 0), text_val, font=font_small)
                 text_w = text_bbox[2] - text_bbox[0]
                 text_h = text_bbox[3] - text_bbox[1]
-                total_w = dot + 14 * scale + text_w
+                total_w = dot + 18 + text_w
                 start_x = x + (col_widths[i] - total_w) / 2
                 dot_y = y + (row_h - dot) / 2
-                draw.ellipse([start_x, dot_y, start_x + dot, dot_y + dot], fill=dot_color, outline=border, width=1 * scale)
-                draw.text((start_x + dot + 14 * scale, y + (row_h - text_h) / 2 - 3 * scale), text_val, fill=black, font=font_small)
+                draw.ellipse([start_x, dot_y, start_x + dot, dot_y + dot], fill=dot_color, outline=border, width=2)
+                draw.text((start_x + dot + 18, y + (row_h - text_h) / 2 - 5), text_val, fill=black, font=font_small)
             else:
                 text_val = val
-                lines = wrap_text_to_width(draw, text_val, font_small, col_widths[i] - 18 * scale)
-                total_h = len(lines) * (20 * scale)
-                ty = y + (row_h - total_h) / 2 - 2 * scale
+                lines = wrap_text_to_width(draw, text_val, font_small, col_widths[i] - 20)
+                line_gap = 36
+                total_h = len(lines) * line_gap
+                ty = y + (row_h - total_h) / 2
                 for line in lines:
                     text_bbox = draw.textbbox((0, 0), line, font=font_small)
                     tw = text_bbox[2] - text_bbox[0]
                     draw.text((x + (col_widths[i] - tw) / 2, ty), line, fill=black, font=font_small)
-                    ty += 22 * scale
+                    ty += line_gap
             x += col_widths[i]
 
+    # Exportar más grande para alta resolución, pero con textos proporcionales.
+    img = img.resize((width * 2, height * 2), Image.Resampling.LANCZOS)
     buffer = BytesIO()
     img.save(buffer, format="PNG", optimize=False, dpi=(300, 300))
     buffer.seek(0)
     return buffer
 
 
-def make_zip_by_store(evidencias: pd.DataFrame) -> BytesIO:
+def safe_filename(value: str) -> str:
+    """Limpia texto para usarlo como nombre de archivo."""
+    value = str(value or "").strip()
+    replacements = {
+        "/": "-", "\\": "-", ":": "-", "*": "", "?": "", '"': "",
+        "<": "", ">": "", "|": "", " ": "_"
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+    return value or "SIN_DATO"
+
+
+def make_zip_by_store(evidencias: pd.DataFrame, semana_zip: str = "") -> BytesIO:
+    """Genera un ZIP con una sola carpeta de evidencias y el concentrado general.
+    Cada imagen/archivo incluye fecha, tienda, actividad e ID en el nombre.
+    """
     buffer = BytesIO()
+    carpeta = safe_filename(f"Evidencias_ORION_{semana_zip}" if semana_zip else "Evidencias_ORION")
     with ZipFile(buffer, "w") as zip_file:
         excel_buffer = BytesIO()
         with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
             evidencias.to_excel(writer, sheet_name="Concentrado", index=False)
-            for tienda in sorted(evidencias["Tienda"].dropna().unique()):
-                evidencias[evidencias["Tienda"] == tienda].to_excel(
-                    writer, sheet_name=str(tienda)[:31], index=False
-                )
-        zip_file.writestr("Concentrado_Evidencias.xlsx", excel_buffer.getvalue())
+            resumen = (
+                evidencias.groupby(["Semana", "Tienda", "Concepto", "Estatus"], dropna=False)
+                .size()
+                .reset_index(name="Total")
+                if not evidencias.empty else pd.DataFrame(columns=["Semana", "Tienda", "Concepto", "Estatus", "Total"])
+            )
+            resumen.to_excel(writer, sheet_name="Resumen", index=False)
+        zip_file.writestr(f"{carpeta}/Concentrado_Evidencias.xlsx", excel_buffer.getvalue())
 
         for _, row in evidencias.iterrows():
             archivo = str(row.get("Archivo", ""))
-            tienda = str(row.get("Tienda", "SIN_TIENDA"))
-            concepto = str(row.get("Concepto", "SIN_CONCEPTO")).replace("/", "-")
             if archivo and Path(archivo).exists():
-                ext = Path(archivo).suffix
-                zip_name = f"{tienda}/{concepto}/{Path(archivo).stem}{ext}"
+                ext = Path(archivo).suffix or ".jpg"
+                fecha = safe_filename(str(row.get("Fecha_Carga", "SIN_FECHA"))[:19])
+                tienda = safe_filename(row.get("Tienda", "SIN_TIENDA"))
+                concepto = safe_filename(row.get("Concepto", "SIN_ACTIVIDAD"))
+                estatus = safe_filename(row.get("Estatus", "SIN_ESTATUS"))
+                evidence_id = safe_filename(row.get("ID", Path(archivo).stem))
+                zip_name = f"{carpeta}/{fecha}_{tienda}_{concepto}_{estatus}_{evidence_id}{ext}"
                 zip_file.write(archivo, zip_name)
     buffer.seek(0)
     return buffer
@@ -481,12 +530,19 @@ with c4:
 
 st.divider()
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📋 Checklist General",
-    "📤 Cargar Evidencias",
-    "🛡️ Validación Admin",
-    "⚙️ Configuración"
-])
+if is_admin:
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📋 Checklist General",
+        "📤 Cargar Evidencias",
+        "🛡️ Validación Admin",
+        "⚙️ Configuración"
+    ])
+else:
+    tab1, tab2 = st.tabs([
+        "📋 Checklist General",
+        "📤 Cargar Evidencias"
+    ])
+    tab3 = tab4 = None
 
 with tab1:
     st.subheader("Checklist de cumplimiento")
@@ -503,55 +559,41 @@ with tab1:
 
     if is_admin:
         st.divider()
-        st.markdown("**Modificar checklist general desde cada punto — solo administrador**")
-        st.caption("Selecciona primero la tienda y después da clic en el punto del checklist. Abajo se despliega el menú para marcar OK, NO, Pendiente, N/A o dejarlo sin marcar.")
-
-        tienda_filtro_punto = st.selectbox("Tienda a modificar", TIENDAS_DEFAULT, key="tienda_filtro_punto")
-
-        if "selected_check_point" not in st.session_state:
-            st.session_state.selected_check_point = active_concepts[0] if active_concepts else ""
-
-        st.markdown(f"### Selecciona el punto de checklist para {tienda_filtro_punto}")
+        st.markdown("**Edición directa dentro de la tabla — solo administrador**")
+        st.caption("Selecciona cualquier celda del checklist y cambia el estatus del punto: Sin marcar, Pendiente, Aceptada, Rechazada o N/A. Al guardar, el porcentaje se recalcula con esa marcación.")
 
         if not active_concepts:
             st.info("No hay encabezados activos en el checklist.")
         else:
-            # Botonera visual: cada encabezado/punto se puede seleccionar directamente.
-            cols_per_row = 4
-            for i in range(0, len(active_concepts), cols_per_row):
-                button_cols = st.columns(cols_per_row)
-                for j, concepto_btn in enumerate(active_concepts[i:i + cols_per_row]):
-                    man_row_btn = manual[
-                        (manual["Semana"].astype(str) == str(semana))
-                        & (manual["Tienda"] == tienda_filtro_punto)
-                        & (manual["Concepto"] == concepto_btn)
-                    ]
-                    current_btn = man_row_btn["Estatus_Manual"].iloc[-1] if not man_row_btn.empty else ""
-                    ev_btn = evidencias[
-                        (evidencias["Semana"].astype(str) == str(semana))
-                        & (evidencias["Tienda"] == tienda_filtro_punto)
-                        & (evidencias["Concepto"] == concepto_btn)
-                    ]
-                    if current_btn == "N/A":
-                        tag = "N/A"
-                    elif current_btn == "Aceptada" or (not ev_btn.empty and (ev_btn["Estatus"] == "Aceptada").any()):
-                        tag = "OK"
-                    elif current_btn == "Rechazada" or (not ev_btn.empty and (ev_btn["Estatus"] == "Rechazada").any()):
-                        tag = "NO"
-                    elif current_btn == "Pendiente" or not ev_btn.empty:
-                        tag = "PEND"
-                    else:
-                        tag = "SIN MARCAR"
+            editor_df = matrix_to_admin_editor(matrix, active_concepts)
+            edited_matrix = st.data_editor(
+                editor_df,
+                width="stretch",
+                hide_index=True,
+                disabled=["Tienda"],
+                key=f"editor_checklist_general_{semana}",
+                column_config={
+                    "Tienda": st.column_config.TextColumn("Tienda"),
+                    **{
+                        concepto: st.column_config.SelectboxColumn(
+                            concepto,
+                            options=["Sin marcar", "Pendiente", "Aceptada", "Rechazada", "N/A"],
+                            required=True,
+                        )
+                        for concepto in active_concepts
+                    }
+                }
+            )
+            if st.button("Guardar cambios de la tabla general", type="primary"):
+                manual_new = save_admin_editor_to_manual(edited_matrix, manual, semana, active_concepts)
+                save_df(manual_new, MANUAL_FILE)
+                st.success("Checklist general actualizado desde la tabla.")
+                st.rerun()
 
-                    label = f"{concepto_btn}\n{tag}"
-                    if button_cols[j].button(label, key=f"select_point_{tienda_filtro_punto}_{concepto_btn}", width="stretch"):
-                        st.session_state.selected_check_point = concepto_btn
-                        st.rerun()
-
-            selected_concept = st.session_state.selected_check_point if st.session_state.selected_check_point in active_concepts else active_concepts[0]
-
-            st.markdown("---")
-            st.markdown(f"### Menú del punto seleccionado: **{selected_concept}**")
+            st.markdown("**Menú detallado por punto seleccionado**")
+            st.caption("Además de la tabla, puedes seleccionar tienda y actividad para ver evidencias ligadas y agregar comentario del administrador.")
+            tienda_filtro_punto = st.selectbox("Tienda a revisar", TIENDAS_DEFAULT, key="tienda_filtro_punto")
+            selected_concept = st.selectbox("Punto del checklist", active_concepts, key="selected_check_point_admin")
 
             man_row = manual[
                 (manual["Semana"].astype(str) == str(semana))
@@ -560,7 +602,6 @@ with tab1:
             ]
             current_status = man_row["Estatus_Manual"].iloc[-1] if not man_row.empty else ""
             current_comment = man_row["Comentario_Admin"].iloc[-1] if not man_row.empty else ""
-
             ev_subset = evidencias[
                 (evidencias["Semana"].astype(str) == str(semana))
                 & (evidencias["Tienda"] == tienda_filtro_punto)
@@ -568,37 +609,22 @@ with tab1:
             ]
 
             left_menu, right_evidence = st.columns([1, 2])
-
             with left_menu:
                 opciones = ["Sin marcar", "Pendiente", "Aceptada", "Rechazada", "N/A"]
                 visible_status = current_status if current_status else "Sin marcar"
                 idx_default = opciones.index(visible_status) if visible_status in opciones else 0
-                accion = st.radio(
-                    "Qué quieres marcar en este punto",
-                    opciones,
-                    index=idx_default,
-                    key=f"accion_seleccionada_{tienda_filtro_punto}_{selected_concept}"
-                )
-                comentario_punto = st.text_area(
-                    "Comentario del administrador",
-                    value=str(current_comment) if str(current_comment) != "nan" else "",
-                    key=f"comentario_seleccionado_{tienda_filtro_punto}_{selected_concept}"
-                )
-                if st.button("Guardar punto seleccionado", type="primary", key=f"guardar_seleccionado_{tienda_filtro_punto}_{selected_concept}"):
+                accion = st.radio("Qué quieres marcar en este punto", opciones, index=idx_default, key=f"accion_detalle_{tienda_filtro_punto}_{selected_concept}")
+                comentario_punto = st.text_area("Comentario del administrador", value=str(current_comment) if str(current_comment) != "nan" else "", key=f"comentario_detalle_{tienda_filtro_punto}_{selected_concept}")
+                if st.button("Guardar punto seleccionado", type="secondary", key=f"guardar_detalle_{tienda_filtro_punto}_{selected_concept}"):
                     manual_status = "" if accion == "Sin marcar" else accion
                     manual_new = upsert_manual(manual, semana, tienda_filtro_punto, selected_concept, manual_status, comentario_punto)
                     save_df(manual_new, MANUAL_FILE)
                     st.success("Punto actualizado.")
                     st.rerun()
-
             with right_evidence:
                 st.markdown("**Evidencias ligadas a este punto**")
                 if not ev_subset.empty:
-                    st.dataframe(
-                        ev_subset[["ID", "Estatus", "Responsable", "Fecha_Carga", "Comentario_Tienda"]],
-                        width="stretch",
-                        hide_index=True
-                    )
+                    st.dataframe(ev_subset[["ID", "Estatus", "Responsable", "Fecha_Carga", "Comentario_Tienda"]], width="stretch", hide_index=True)
                 else:
                     st.info("Sin evidencias cargadas para este punto.")
 
@@ -673,7 +699,9 @@ with tab2:
                         for file in files_to_save:
                             evidence_id = str(uuid.uuid4())[:8]
                             original_name = getattr(file, "name", "camara.png") or "camara.png"
-                            safe_name = f"{evidence_id}_{original_name}"
+                            ext = Path(original_name).suffix or ".jpg"
+                            fecha_nombre = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                            safe_name = f"{fecha_nombre}_{safe_filename(tienda)}_{safe_filename(concepto)}_{evidence_id}{ext}"
                             path = store_dir / safe_name
                             path.write_bytes(file.getbuffer())
                             new_rows.append({
@@ -722,11 +750,9 @@ with tab2:
 
         st.dataframe(mis_evidencias, width="stretch", hide_index=True)
 
-with tab3:
-    st.subheader("Control general de evidencias")
-    if not is_admin:
-        st.warning("Esta sección es solo para administrador.")
-    else:
+if is_admin:
+    with tab3:
+        st.subheader("Control general de evidencias")
         control_df = make_activity_control(evidencias, config, semana, manual)
         st.caption("Concentrado general por tienda y actividad. Aquí se ve el cumplimiento de cada actividad del checklist.")
         st.dataframe(control_df, width="stretch", hide_index=True)
@@ -798,7 +824,7 @@ with tab3:
 
         st.divider()
         st.subheader("Descarga de concentrado")
-        zip_buffer = make_zip_by_store(evidencias)
+        zip_buffer = make_zip_by_store(evidencias, semana)
         st.download_button(
             "⬇️ Descargar evidencias por tienda ZIP",
             data=zip_buffer,
@@ -806,11 +832,9 @@ with tab3:
             mime="application/zip"
         )
 
-with tab4:
-    st.subheader("Configuración del checklist")
-    if not is_admin:
-        st.warning("Esta sección es solo para administrador.")
-    else:
+if is_admin:
+    with tab4:
+        st.subheader("Configuración del checklist")
         st.caption("Edita los encabezados del checklist. Cada encabezado será un concepto obligatorio para cargar evidencias.")
         edited = st.data_editor(
             config,

@@ -1,21 +1,16 @@
-# ORION - Checklist de Evidencias
+# ORION Checklist de Evidencias v7
 
-Módulo Streamlit para checklist editable, carga de evidencias por tienda y validación de administrador.
+Aplicación Streamlit para checklist general, carga de evidencias por tienda, validación administrativa y descarga de concentrados.
 
-## Archivos
-- `app.py`: aplicación principal.
-- `requirements.txt`: dependencias para Streamlit Cloud.
+## Acceso administrador
+Usuario: admin  
+Contraseña: admin123
 
-## Cómo subir a GitHub
-1. Crea un repositorio nuevo.
-2. Sube `app.py`, `requirements.txt` y este `README.md`.
-3. En Streamlit Cloud selecciona como archivo principal: `app.py`.
-
-## Acceso
-En la barra lateral puedes elegir:
-- Administrador
-- Tienda
-
-La contraseña inicial de administrador es: `admin123`
-
-Puedes cambiarla dentro de `app.py` en la variable `ADMIN_PASSWORD`.
+## Cambios v7
+- Usuario Tienda solo ve Checklist General y Cargar Evidencias.
+- Administrador puede editar el checklist directamente dentro de la tabla general.
+- Cada celda del checklist permite: Sin marcar, Pendiente, Aceptada, Rechazada o N/A.
+- Descarga PNG del checklist con textos visibles y mayor calidad.
+- Descarga de evidencias en una sola carpeta dentro del ZIP.
+- Cada evidencia descargada incluye fecha, tienda, actividad, estatus e ID en el nombre del archivo.
+- Control general de evidencias con cumplimiento por actividad.
