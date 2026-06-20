@@ -205,17 +205,36 @@ def render_portal_table(df: pd.DataFrame) -> str:
     return "".join(html_parts)
 
 
+def _load_font(size: int, bold: bool = False):
+    """Carga una fuente clara para exportar imagen en alta resolución."""
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    ]
+    for font_path in candidates:
+        try:
+            return ImageFont.truetype(font_path, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
 def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
-    """Genera una imagen PNG del checklist general con estilo tipo portal web."""
-    font = ImageFont.load_default()
+    """Genera una imagen PNG del checklist general en alta resolución."""
+    scale = 3  # mejora la nitidez de descarga
+    font = _load_font(20 * scale, bold=True)
+    font_small = _load_font(18 * scale, bold=True)
+    title_font = _load_font(26 * scale, bold=True)
+
     header_bg = (47, 103, 168)
     gray_bg = (166, 166, 166)
     even_bg = (217, 232, 246)
     odd_bg = (255, 255, 255)
     border = (27, 27, 27)
     white = (255, 255, 255)
+    black = (38, 40, 55)
     green = (105, 173, 147)
-    red = (232, 91, 53)
+    red = (239, 47, 50)
     amber = (197, 139, 74)
     gray = (154, 154, 154)
     blue_text = (35, 85, 140)
@@ -224,23 +243,34 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     col_widths = []
     for col in cols:
         max_len = max([len(str(col))] + [len(str(v)) for v in df[col].tolist()])
-        col_widths.append(max(90, min(190, max_len * 8 + 28)))
-    row_h = 34
-    title_h = 54
-    width = sum(col_widths) + 2
-    height = title_h + row_h * (len(df) + 1) + 2
+        if col == "Tienda":
+            base = 120
+        elif col == "% Cumplimiento":
+            base = 210
+        else:
+            base = 250
+        col_widths.append(max(base, min(430, max_len * 14 + 80)) * scale)
+
+    row_h = 58 * scale
+    title_h = 82 * scale
+    width = sum(col_widths) + 2 * scale
+    height = title_h + row_h * (len(df) + 1) + 2 * scale
     img = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(img)
 
     draw.rectangle([0, 0, width, title_h], fill=(247, 249, 255))
-    draw.text((12, 18), title, fill=blue_text, font=font)
+    draw.text((18 * scale, 24 * scale), title, fill=blue_text, font=title_font)
 
     y = title_h
     x = 0
     for i, col in enumerate(cols):
         bg = gray_bg if i == 0 or col == "% Cumplimiento" else header_bg
-        draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border)
-        draw.text((x + 6, y + 10), str(col)[:24], fill=white, font=font)
+        draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=2 * scale)
+        text = str(col)[:30]
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        draw.text((x + (col_widths[i] - tw) / 2, y + (row_h - th) / 2 - 2 * scale), text, fill=white, font=font)
         x += col_widths[i]
 
     for r, (_, row) in enumerate(df.iterrows()):
@@ -249,8 +279,8 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
         x = 0
         for i, col in enumerate(cols):
             val = str(row[col])
-            draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border)
-            tx = x + 8
+            draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=2 * scale)
+
             if val in ["OK", "NO", "PEND", "N/A"] or col == "% Cumplimiento":
                 if val == "OK":
                     dot_color, text_val = green, "OK"
@@ -267,14 +297,24 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
                         num = 0
                     dot_color = green if num >= 80 else amber if num >= 50 else red
                     text_val = val
-                draw.ellipse([tx, y + 9, tx + 15, y + 24], fill=dot_color, outline=border)
-                draw.text((tx + 22, y + 11), text_val, fill=(0, 0, 0), font=font)
+                dot = 24 * scale
+                text_bbox = draw.textbbox((0, 0), text_val, font=font_small)
+                text_w = text_bbox[2] - text_bbox[0]
+                total_w = dot + 14 * scale + text_w
+                start_x = x + (col_widths[i] - total_w) / 2
+                dot_y = y + (row_h - dot) / 2
+                draw.ellipse([start_x, dot_y, start_x + dot, dot_y + dot], fill=dot_color, outline=border, width=1 * scale)
+                draw.text((start_x + dot + 14 * scale, y + 17 * scale), text_val, fill=black, font=font_small)
             else:
-                draw.text((tx, y + 11), val[:24], fill=(0, 0, 0), font=font)
+                text_val = val[:30]
+                text_bbox = draw.textbbox((0, 0), text_val, font=font_small)
+                tw = text_bbox[2] - text_bbox[0]
+                th = text_bbox[3] - text_bbox[1]
+                draw.text((x + (col_widths[i] - tw) / 2, y + (row_h - th) / 2 - 2 * scale), text_val, fill=black, font=font_small)
             x += col_widths[i]
 
     buffer = BytesIO()
-    img.save(buffer, format="PNG")
+    img.save(buffer, format="PNG", optimize=False)
     buffer.seek(0)
     return buffer
 
@@ -389,62 +429,104 @@ with tab1:
 
     if is_admin:
         st.divider()
-        st.markdown("**Modificar checklist general por punto — solo administrador**")
-        st.caption("Abre cada tienda y cada punto del checklist para seleccionar qué hacer: Sin marcar, Pendiente, Aceptada, Rechazada o N/A.")
+        st.markdown("**Modificar checklist general desde cada punto — solo administrador**")
+        st.caption("Selecciona primero la tienda y después da clic en el punto del checklist. Abajo se despliega el menú para marcar OK, NO, Pendiente, N/A o dejarlo sin marcar.")
 
-        tienda_filtro_punto = st.selectbox("Tienda para modificar", TIENDAS_DEFAULT, key="tienda_filtro_punto")
-        st.markdown(f"### {tienda_filtro_punto}")
+        tienda_filtro_punto = st.selectbox("Tienda a modificar", TIENDAS_DEFAULT, key="tienda_filtro_punto")
+
+        if "selected_check_point" not in st.session_state:
+            st.session_state.selected_check_point = active_concepts[0] if active_concepts else ""
+
+        st.markdown(f"### Selecciona el punto de checklist para {tienda_filtro_punto}")
 
         if not active_concepts:
             st.info("No hay encabezados activos en el checklist.")
         else:
-            for concepto_item in active_concepts:
-                man_row = manual[
-                    (manual["Semana"].astype(str) == str(semana))
-                    & (manual["Tienda"] == tienda_filtro_punto)
-                    & (manual["Concepto"] == concepto_item)
-                ]
-                current_status = man_row["Estatus_Manual"].iloc[-1] if not man_row.empty else ""
-                current_comment = man_row["Comentario_Admin"].iloc[-1] if not man_row.empty else ""
-
-                ev_subset = evidencias[
-                    (evidencias["Semana"].astype(str) == str(semana))
-                    & (evidencias["Tienda"] == tienda_filtro_punto)
-                    & (evidencias["Concepto"] == concepto_item)
-                ]
-
-                visible_status = current_status if current_status else "Sin marcar"
-                with st.expander(f"{concepto_item} | Estatus actual: {visible_status}"):
-                    st.write("**Menú del punto de checklist**")
-                    if not ev_subset.empty:
-                        st.caption(f"Evidencias cargadas para este punto: {len(ev_subset)}")
-                        st.dataframe(
-                            ev_subset[["ID", "Estatus", "Responsable", "Fecha_Carga", "Comentario_Tienda"]],
-                            width="stretch",
-                            hide_index=True
-                        )
+            # Botonera visual: cada encabezado/punto se puede seleccionar directamente.
+            cols_per_row = 4
+            for i in range(0, len(active_concepts), cols_per_row):
+                button_cols = st.columns(cols_per_row)
+                for j, concepto_btn in enumerate(active_concepts[i:i + cols_per_row]):
+                    man_row_btn = manual[
+                        (manual["Semana"].astype(str) == str(semana))
+                        & (manual["Tienda"] == tienda_filtro_punto)
+                        & (manual["Concepto"] == concepto_btn)
+                    ]
+                    current_btn = man_row_btn["Estatus_Manual"].iloc[-1] if not man_row_btn.empty else ""
+                    ev_btn = evidencias[
+                        (evidencias["Semana"].astype(str) == str(semana))
+                        & (evidencias["Tienda"] == tienda_filtro_punto)
+                        & (evidencias["Concepto"] == concepto_btn)
+                    ]
+                    if current_btn == "N/A":
+                        tag = "N/A"
+                    elif current_btn == "Aceptada" or (not ev_btn.empty and (ev_btn["Estatus"] == "Aceptada").any()):
+                        tag = "OK"
+                    elif current_btn == "Rechazada" or (not ev_btn.empty and (ev_btn["Estatus"] == "Rechazada").any()):
+                        tag = "NO"
+                    elif current_btn == "Pendiente" or not ev_btn.empty:
+                        tag = "PEND"
                     else:
-                        st.caption("Sin evidencias cargadas para este punto.")
+                        tag = "SIN MARCAR"
 
-                    opciones = ["Sin marcar", "Pendiente", "Aceptada", "Rechazada", "N/A"]
-                    idx_default = opciones.index(visible_status) if visible_status in opciones else 0
-                    accion = st.selectbox(
-                        "Qué quieres hacer con este punto",
-                        opciones,
-                        index=idx_default,
-                        key=f"accion_{tienda_filtro_punto}_{concepto_item}"
-                    )
-                    comentario_punto = st.text_input(
-                        "Comentario del administrador",
-                        value=str(current_comment) if str(current_comment) != "nan" else "",
-                        key=f"comentario_punto_{tienda_filtro_punto}_{concepto_item}"
-                    )
-                    if st.button("Guardar este punto", key=f"guardar_punto_{tienda_filtro_punto}_{concepto_item}"):
-                        manual_status = "" if accion == "Sin marcar" else accion
-                        manual_new = upsert_manual(manual, semana, tienda_filtro_punto, concepto_item, manual_status, comentario_punto)
-                        save_df(manual_new, MANUAL_FILE)
-                        st.success("Punto actualizado.")
+                    label = f"{concepto_btn}\n{tag}"
+                    if button_cols[j].button(label, key=f"select_point_{tienda_filtro_punto}_{concepto_btn}", width="stretch"):
+                        st.session_state.selected_check_point = concepto_btn
                         st.rerun()
+
+            selected_concept = st.session_state.selected_check_point if st.session_state.selected_check_point in active_concepts else active_concepts[0]
+
+            st.markdown("---")
+            st.markdown(f"### Menú del punto seleccionado: **{selected_concept}**")
+
+            man_row = manual[
+                (manual["Semana"].astype(str) == str(semana))
+                & (manual["Tienda"] == tienda_filtro_punto)
+                & (manual["Concepto"] == selected_concept)
+            ]
+            current_status = man_row["Estatus_Manual"].iloc[-1] if not man_row.empty else ""
+            current_comment = man_row["Comentario_Admin"].iloc[-1] if not man_row.empty else ""
+
+            ev_subset = evidencias[
+                (evidencias["Semana"].astype(str) == str(semana))
+                & (evidencias["Tienda"] == tienda_filtro_punto)
+                & (evidencias["Concepto"] == selected_concept)
+            ]
+
+            left_menu, right_evidence = st.columns([1, 2])
+
+            with left_menu:
+                opciones = ["Sin marcar", "Pendiente", "Aceptada", "Rechazada", "N/A"]
+                visible_status = current_status if current_status else "Sin marcar"
+                idx_default = opciones.index(visible_status) if visible_status in opciones else 0
+                accion = st.radio(
+                    "Qué quieres marcar en este punto",
+                    opciones,
+                    index=idx_default,
+                    key=f"accion_seleccionada_{tienda_filtro_punto}_{selected_concept}"
+                )
+                comentario_punto = st.text_area(
+                    "Comentario del administrador",
+                    value=str(current_comment) if str(current_comment) != "nan" else "",
+                    key=f"comentario_seleccionado_{tienda_filtro_punto}_{selected_concept}"
+                )
+                if st.button("Guardar punto seleccionado", type="primary", key=f"guardar_seleccionado_{tienda_filtro_punto}_{selected_concept}"):
+                    manual_status = "" if accion == "Sin marcar" else accion
+                    manual_new = upsert_manual(manual, semana, tienda_filtro_punto, selected_concept, manual_status, comentario_punto)
+                    save_df(manual_new, MANUAL_FILE)
+                    st.success("Punto actualizado.")
+                    st.rerun()
+
+            with right_evidence:
+                st.markdown("**Evidencias ligadas a este punto**")
+                if not ev_subset.empty:
+                    st.dataframe(
+                        ev_subset[["ID", "Estatus", "Responsable", "Fecha_Carga", "Comentario_Tienda"]],
+                        width="stretch",
+                        hide_index=True
+                    )
+                else:
+                    st.info("Sin evidencias cargadas para este punto.")
 
     excel_matrix = BytesIO()
     matrix.to_excel(excel_matrix, index=False, engine="openpyxl")
