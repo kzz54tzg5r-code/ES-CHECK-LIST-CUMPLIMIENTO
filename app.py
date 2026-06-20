@@ -220,10 +220,10 @@ def _load_font(size: int, bold: bool = False):
 
 
 def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
-    """Genera una imagen PNG del checklist general en alta resolución."""
-    scale = 3  # mejora la nitidez de descarga
-    font = _load_font(20 * scale, bold=True)
-    font_small = _load_font(18 * scale, bold=True)
+    """Genera una imagen PNG del checklist general en alta resolución, con textos visibles."""
+    scale = 4
+    font = _load_font(18 * scale, bold=True)
+    font_small = _load_font(17 * scale, bold=True)
     title_font = _load_font(26 * scale, bold=True)
 
     header_bg = (47, 103, 168)
@@ -242,20 +242,19 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     cols = list(df.columns)
     col_widths = []
     for col in cols:
-        max_len = max([len(str(col))] + [len(str(v)) for v in df[col].tolist()])
         if col == "Tienda":
-            base = 120
+            base = 145
         elif col == "% Cumplimiento":
-            base = 210
+            base = 260
         else:
-            base = 250
-        col_widths.append(max(base, min(430, max_len * 14 + 80)) * scale)
+            base = 300
+        col_widths.append(base * scale)
 
-    row_h = 58 * scale
-    title_h = 82 * scale
+    row_h = 68 * scale
+    title_h = 92 * scale
     width = sum(col_widths) + 2 * scale
     height = title_h + row_h * (len(df) + 1) + 2 * scale
-    img = Image.new("RGB", (width, height), "white")
+    img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
     draw.rectangle([0, 0, width, title_h], fill=(247, 249, 255))
@@ -266,11 +265,14 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     for i, col in enumerate(cols):
         bg = gray_bg if i == 0 or col == "% Cumplimiento" else header_bg
         draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=2 * scale)
-        text = str(col)[:30]
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        draw.text((x + (col_widths[i] - tw) / 2, y + (row_h - th) / 2 - 2 * scale), text, fill=white, font=font)
+        lines = wrap_text_to_width(draw, str(col), font, col_widths[i] - 18 * scale)
+        total_h = len(lines) * (20 * scale)
+        ty = y + (row_h - total_h) / 2 - 2 * scale
+        for line in lines:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw = bbox[2] - bbox[0]
+            draw.text((x + (col_widths[i] - tw) / 2, ty), line, fill=white, font=font)
+            ty += 22 * scale
         x += col_widths[i]
 
     for r, (_, row) in enumerate(df.iterrows()):
@@ -300,21 +302,26 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
                 dot = 24 * scale
                 text_bbox = draw.textbbox((0, 0), text_val, font=font_small)
                 text_w = text_bbox[2] - text_bbox[0]
+                text_h = text_bbox[3] - text_bbox[1]
                 total_w = dot + 14 * scale + text_w
                 start_x = x + (col_widths[i] - total_w) / 2
                 dot_y = y + (row_h - dot) / 2
                 draw.ellipse([start_x, dot_y, start_x + dot, dot_y + dot], fill=dot_color, outline=border, width=1 * scale)
-                draw.text((start_x + dot + 14 * scale, y + 17 * scale), text_val, fill=black, font=font_small)
+                draw.text((start_x + dot + 14 * scale, y + (row_h - text_h) / 2 - 3 * scale), text_val, fill=black, font=font_small)
             else:
-                text_val = val[:30]
-                text_bbox = draw.textbbox((0, 0), text_val, font=font_small)
-                tw = text_bbox[2] - text_bbox[0]
-                th = text_bbox[3] - text_bbox[1]
-                draw.text((x + (col_widths[i] - tw) / 2, y + (row_h - th) / 2 - 2 * scale), text_val, fill=black, font=font_small)
+                text_val = val
+                lines = wrap_text_to_width(draw, text_val, font_small, col_widths[i] - 18 * scale)
+                total_h = len(lines) * (20 * scale)
+                ty = y + (row_h - total_h) / 2 - 2 * scale
+                for line in lines:
+                    text_bbox = draw.textbbox((0, 0), line, font=font_small)
+                    tw = text_bbox[2] - text_bbox[0]
+                    draw.text((x + (col_widths[i] - tw) / 2, ty), line, fill=black, font=font_small)
+                    ty += 22 * scale
             x += col_widths[i]
 
     buffer = BytesIO()
-    img.save(buffer, format="PNG", optimize=False)
+    img.save(buffer, format="PNG", optimize=False, dpi=(300, 300))
     buffer.seek(0)
     return buffer
 
@@ -341,6 +348,73 @@ def make_zip_by_store(evidencias: pd.DataFrame) -> BytesIO:
                 zip_file.write(archivo, zip_name)
     buffer.seek(0)
     return buffer
+
+
+def make_activity_control(evidencias: pd.DataFrame, config: pd.DataFrame, semana: str, manual: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Concentrado general por tienda y actividad con cumplimiento de cada punto."""
+    conceptos = config[config["Activo"] == True]["Concepto"].tolist()
+    ev_sem = evidencias[evidencias["Semana"].astype(str) == str(semana)] if semana != "Todas" else evidencias.copy()
+    manual = manual if manual is not None else pd.DataFrame(columns=["Semana", "Tienda", "Concepto", "Estatus_Manual"])
+    man_sem = manual[manual["Semana"].astype(str) == str(semana)] if semana != "Todas" else manual.copy()
+    rows = []
+    for tienda in TIENDAS_DEFAULT:
+        for concepto in conceptos:
+            ev = ev_sem[(ev_sem["Tienda"] == tienda) & (ev_sem["Concepto"] == concepto)]
+            man = man_sem[(man_sem["Tienda"] == tienda) & (man_sem["Concepto"] == concepto)]
+            manual_status = man["Estatus_Manual"].iloc[-1] if not man.empty else ""
+            aceptadas = int((ev["Estatus"] == "Aceptada").sum()) if not ev.empty else 0
+            rechazadas = int((ev["Estatus"] == "Rechazada").sum()) if not ev.empty else 0
+            pendientes = int((ev["Estatus"] == "Pendiente").sum()) if not ev.empty else 0
+            total = int(len(ev))
+            if manual_status == "N/A":
+                estatus_final = "N/A"
+                cumplimiento = "N/A"
+            elif manual_status == "Aceptada" or aceptadas > 0:
+                estatus_final = "Cumple"
+                cumplimiento = "100%"
+            elif manual_status == "Rechazada" or rechazadas > 0:
+                estatus_final = "No cumple"
+                cumplimiento = "0%"
+            elif manual_status == "Pendiente" or pendientes > 0:
+                estatus_final = "Pendiente"
+                cumplimiento = "0%"
+            else:
+                estatus_final = "Sin evidencia"
+                cumplimiento = "0%"
+            rows.append({
+                "Semana": semana,
+                "Tienda": tienda,
+                "Actividad": concepto,
+                "Estatus final": estatus_final,
+                "% Cumplimiento actividad": cumplimiento,
+                "Evidencias cargadas": total,
+                "Aceptadas": aceptadas,
+                "Pendientes": pendientes,
+                "Rechazadas": rechazadas,
+                "Marcación manual admin": manual_status,
+            })
+    return pd.DataFrame(rows)
+
+
+def wrap_text_to_width(draw, text: str, font, max_width: int):
+    """Divide texto en líneas para que sí se vea completo en la imagen PNG."""
+    words = str(text).split()
+    if not words:
+        return [""]
+    lines = []
+    current = ""
+    for word in words:
+        test = word if not current else current + " " + word
+        bbox = draw.textbbox((0, 0), test, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines[:3]
 
 
 def delete_evidence_record(evidencias_df: pd.DataFrame, evidence_id: str) -> pd.DataFrame:
@@ -558,14 +632,22 @@ with tab2:
                     key=f"comentario_{tienda}_{concepto}"
                 )
 
-                cam_col, gal_col = st.columns(2)
-                with cam_col:
-                    st.markdown("**Abrir cámara**")
+                st.info("Las evidencias son confidenciales y se guardan únicamente dentro de este ORION. No se usan en otros sitios ni para otros fines.")
+                fuente = st.radio(
+                    "Origen de la evidencia",
+                    ["Seleccionar desde galería / archivo", "Tomar foto con cámara"],
+                    horizontal=True,
+                    key=f"fuente_{tienda}_{concepto}"
+                )
+                camera_file = None
+                gallery_files = []
+                if fuente == "Tomar foto con cámara":
+                    st.markdown("**Cámara activa únicamente para tomar foto**")
                     camera_file = st.camera_input(
                         "Tomar foto",
                         key=f"camara_{tienda}_{concepto}"
                     )
-                with gal_col:
+                else:
                     st.markdown("**Seleccionar desde galería / archivo**")
                     gallery_files = st.file_uploader(
                         "Cargar desde galería",
@@ -641,10 +723,25 @@ with tab2:
         st.dataframe(mis_evidencias, width="stretch", hide_index=True)
 
 with tab3:
-    st.subheader("Validación de evidencias")
+    st.subheader("Control general de evidencias")
     if not is_admin:
         st.warning("Esta sección es solo para administrador.")
     else:
+        control_df = make_activity_control(evidencias, config, semana, manual)
+        st.caption("Concentrado general por tienda y actividad. Aquí se ve el cumplimiento de cada actividad del checklist.")
+        st.dataframe(control_df, width="stretch", hide_index=True)
+
+        control_excel = BytesIO()
+        control_df.to_excel(control_excel, index=False, engine="openpyxl")
+        st.download_button(
+            "⬇️ Descargar control general por actividad",
+            data=control_excel.getvalue(),
+            file_name=f"Control_General_Evidencias_{semana}.xlsx".replace(" ", "_"),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        st.divider()
+        st.subheader("Validación individual de evidencias")
         f1, f2, f3 = st.columns(3)
         with f1:
             filtro_tienda = st.selectbox("Filtrar tienda", ["Todas"] + TIENDAS_DEFAULT)
