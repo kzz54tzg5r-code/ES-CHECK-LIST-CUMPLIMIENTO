@@ -655,17 +655,15 @@ with tab1:
         else:
             st.markdown("**Acción rápida por tiendas**")
             st.caption("Selecciona una o varias tiendas y marca todas sus actividades activas en un solo paso. Esto también actualiza el checklist general y sus porcentajes.")
-
             col_store, col_status, col_apply = st.columns([3, 2, 2])
-
             with col_store:
-                seleccionar_todas_tiendas = st.checkbox(
+                seleccionar_todas = st.checkbox(
                     "Seleccionar todas las tiendas",
                     value=False,
                     key=f"seleccionar_todas_tiendas_{semana}"
                 )
 
-                if seleccionar_todas_tiendas:
+                if seleccionar_todas:
                     tiendas_masivas = TIENDAS_DEFAULT.copy()
                     st.success(f"{len(tiendas_masivas)} tiendas seleccionadas")
                 else:
@@ -682,15 +680,13 @@ with tab1:
                     ["Aceptada", "Pendiente", "Rechazada", "N/A", "Sin marcar"],
                     key=f"estatus_masivo_{semana}"
                 )
-
             with col_apply:
                 st.write("")
                 st.write("")
                 aplicar_masivo = st.button(
                     "Aplicar a tiendas seleccionadas",
                     type="primary",
-                    key=f"aplicar_tiendas_{semana}",
-                    use_container_width=True
+                    key=f"aplicar_tiendas_{semana}"
                 )
 
             if aplicar_masivo:

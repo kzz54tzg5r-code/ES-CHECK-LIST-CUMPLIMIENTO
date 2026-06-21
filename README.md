@@ -1,6 +1,7 @@
-# ES Check List Evidencias v15
+# ES Check List Evidencias v16
 
-Cambios incluidos:
-- Acción rápida por tiendas con selección múltiple.
+Cambios:
+- Acción rápida por tiendas con multiselección.
 - Opción para seleccionar todas las tiendas.
-- Aplicación masiva de estatus a todas las actividades activas.
+- Aplica Aceptada, Pendiente, Rechazada, N/A o Sin marcar a todas las actividades activas de las tiendas seleccionadas.
+- Conserva PDF por canvas para evitar LayoutError.
