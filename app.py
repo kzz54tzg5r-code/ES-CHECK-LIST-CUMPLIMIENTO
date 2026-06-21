@@ -345,9 +345,16 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
                     ty += line_gap
             x += col_widths[i]
 
-    # Exportar en alta resolución con textos grandes y nítidos.
+    # Exportar en ultra alta resolución con textos grandes y nítidos.
+    # Se duplica el lienzo antes de guardar para que al descargar, abrir o pegar
+    # en PowerPoint/WhatsApp no se pierda la lectura del texto.
+    try:
+        img = img.resize((img.width * 2, img.height * 2), Image.Resampling.LANCZOS)
+    except Exception:
+        img = img.resize((img.width * 2, img.height * 2))
+
     buffer = BytesIO()
-    img.save(buffer, format="PNG", optimize=False, dpi=(300, 300))
+    img.save(buffer, format="PNG", optimize=False, dpi=(600, 600))
     buffer.seek(0)
     return buffer
 
@@ -485,7 +492,7 @@ def render_activity_cards(activity_df: pd.DataFrame) -> str:
             <div class="activity-number">{pct:.0f}%</div>
             <div class="activity-label">Cumplimiento</div>
             <div class="activity-bar"><span style="width:{max(0,min(100,pct)):.0f}%"></span></div>
-            <div class="activity-foot">{int(row['Aceptadas'])} / {int(row['Requeridas'])} aceptadas</div>
+            <div class="activity-foot">{pct:.0f}% cumplimiento actividad · {int(row['Aceptadas'])} / {int(row['Requeridas'])} aceptadas</div>
         </div>
         """)
     parts.append('</div>')

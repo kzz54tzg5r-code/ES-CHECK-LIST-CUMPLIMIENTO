@@ -1,15 +1,13 @@
-# ORION | Checklist de Evidencias v8
+# ORION Checklist de Evidencias v9
 
-Cambios incluidos:
+Actualización incluida:
 
-- Las tarjetas superiores muestran el **% de cumplimiento por actividad**.
-- Imagen PNG del checklist general con texto más grande y legible.
-- Configuración del checklist con opción para **eliminar columnas/actividades**.
-- Se mantiene la edición directa del checklist como administrador.
-- Usuario tipo tienda solo ve Checklist General y Cargar Evidencias.
-- Descarga ZIP de evidencias en una sola carpeta, con fecha, tienda y actividad en el nombre del archivo.
+- Tarjetas superiores con porcentaje de cumplimiento por actividad.
+- Se conserva el conteo de aceptadas/requeridas.
+- Checklist general editable por administrador desde tabla con opciones: Sin marcar, Pendiente, Aceptada, Rechazada y N/A.
+- Descarga PNG del checklist en ultra alta resolución con texto más grande y legible.
+- Configuración con opción para eliminar columnas/actividades.
+- Usuario Tienda limitado a Checklist General y Carga de Evidencias.
 
-Usuario administrador:
-
-- Usuario: admin
-- Contraseña: admin123
+Usuario administrador: `admin`
+Contraseña: `admin123`
