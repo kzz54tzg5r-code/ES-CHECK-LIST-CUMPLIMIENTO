@@ -11,3 +11,7 @@ Cambios v12:
 
 Usuario administrador:
 - Contraseña inicial: admin123
+
+
+## v14
+- Se agregó acción rápida para aceptar, rechazar, dejar pendiente, marcar N/A o limpiar todas las actividades de una tienda desde el checklist general.

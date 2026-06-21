@@ -653,6 +653,41 @@ with tab1:
         if not active_concepts:
             st.info("No hay encabezados activos en el checklist.")
         else:
+            st.markdown("**Acción rápida por tienda**")
+            st.caption("Selecciona una tienda y marca todas sus actividades activas en un solo paso. Esto también actualiza el checklist general y sus porcentajes.")
+            col_store, col_status, col_apply = st.columns([3, 2, 2])
+            with col_store:
+                tienda_masiva = st.selectbox(
+                    "Tienda",
+                    TIENDAS_DEFAULT,
+                    key=f"tienda_masiva_{semana}"
+                )
+            with col_status:
+                estatus_masivo = st.selectbox(
+                    "Marcar todas las actividades como",
+                    ["Aceptada", "Pendiente", "Rechazada", "N/A", "Sin marcar"],
+                    key=f"estatus_masivo_{semana}"
+                )
+            with col_apply:
+                st.write("")
+                st.write("")
+                if st.button("Aplicar a toda la tienda", type="primary", key=f"aplicar_tienda_{semana}"):
+                    manual_new = manual.copy()
+                    estatus_guardar = "" if estatus_masivo == "Sin marcar" else estatus_masivo
+                    for concepto_masivo in active_concepts:
+                        manual_new = upsert_manual(
+                            manual_new,
+                            semana,
+                            tienda_masiva,
+                            concepto_masivo,
+                            estatus_guardar,
+                            f"Marcación masiva por tienda: {estatus_masivo}"
+                        )
+                    save_df(manual_new, MANUAL_FILE)
+                    st.success(f"{tienda_masiva} actualizado: todas las actividades quedaron como {estatus_masivo}.")
+                    st.rerun()
+
+            st.divider()
             editor_df = matrix_to_admin_editor(matrix, active_concepts)
             edited_matrix = st.data_editor(
                 editor_df,
