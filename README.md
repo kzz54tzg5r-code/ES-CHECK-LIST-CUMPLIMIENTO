@@ -1,12 +1,13 @@
-# ES Check List Evidencias v10
+# ES Check List Evidencias v12
 
-Aplicación Streamlit para control de checklist y evidencias por tienda.
+Aplicación Streamlit para checklist de evidencias por tienda.
 
-## Cambios v10
-- Nombre actualizado a **ES Check List Evidencias**.
-- Descarga del checklist general en **PDF** en lugar de PNG.
-- Conserva edición de checklist, evidencias, validación admin, N/A, eliminación de columnas y ZIP de evidencias.
+Cambios v12:
+- Nombre actualizado a ES Check List Evidencias.
+- Tarjetas de cumplimiento por actividad enlazadas a los encabezados activos.
+- Corrección para que el HTML de tarjetas no se muestre como texto.
+- Descarga del checklist general en PDF.
+- PDF con texto más grande y mejor visibilidad.
 
-## Acceso administrador
-Usuario: Administrador
-Contraseña: admin123
+Usuario administrador:
+- Contraseña inicial: admin123

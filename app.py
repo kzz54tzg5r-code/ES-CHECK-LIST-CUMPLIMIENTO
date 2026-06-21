@@ -8,14 +8,11 @@ from io import BytesIO
 import uuid
 import html
 from PIL import Image, ImageDraw, ImageFont
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.pagesizes import landscape, A2
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
+from reportlab.platypus import SimpleDocTemplate, Image as RLImage
+from reportlab.lib.pagesizes import landscape, A3
 
 # =============================
-# ES CHECK LIST EVIDENCIAS
+# ORION - CHECKLIST EVIDENCIAS
 # =============================
 
 st.set_page_config(
@@ -249,9 +246,9 @@ def _load_font(size: int, bold: bool = False):
 
 def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     """Genera PNG legible del checklist general con textos visibles y alta calidad."""
-    font = _load_font(58, bold=True)
-    font_small = _load_font(54, bold=True)
-    title_font = _load_font(78, bold=True)
+    font = _load_font(90, bold=True)
+    font_small = _load_font(82, bold=True)
+    title_font = _load_font(120, bold=True)
 
     header_bg = (47, 103, 168)
     gray_bg = (166, 166, 166)
@@ -270,15 +267,15 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     col_widths = []
     for col in cols:
         if col == "Tienda":
-            base = 260
+            base = 380
         elif col == "% Cumplimiento":
-            base = 470
+            base = 650
         else:
-            base = max(560, min(820, 32 * len(str(col)) + 220))
+            base = max(760, min(1150, 44 * len(str(col)) + 300))
         col_widths.append(base)
 
-    row_h = 150
-    title_h = 190
+    row_h = 240
+    title_h = 340
     margin = 44
     width = sum(col_widths) + margin * 2
     height = title_h + row_h * (len(df) + 1) + margin * 2
@@ -294,7 +291,7 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
         bg = gray_bg if i == 0 or col == "% Cumplimiento" else header_bg
         draw.rectangle([x, y, x + col_widths[i], y + row_h], fill=bg, outline=border, width=3)
         lines = wrap_text_to_width(draw, str(col), font, col_widths[i] - 20)
-        line_gap = 64
+        line_gap = 100
         total_h = len(lines) * line_gap
         ty = y + (row_h - total_h) / 2
         for line in lines:
@@ -328,7 +325,7 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
                         num = 0
                     dot_color = green if num >= 80 else amber if num >= 50 else red
                     text_val = val
-                dot = 58
+                dot = 90
                 text_bbox = draw.textbbox((0, 0), text_val, font=font_small)
                 text_w = text_bbox[2] - text_bbox[0]
                 text_h = text_bbox[3] - text_bbox[1]
@@ -340,7 +337,7 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
             else:
                 text_val = val
                 lines = wrap_text_to_width(draw, text_val, font_small, col_widths[i] - 20)
-                line_gap = 60
+                line_gap = 95
                 total_h = len(lines) * line_gap
                 ty = y + (row_h - total_h) / 2
                 for line in lines:
@@ -364,115 +361,35 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     return buffer
 
 
-
-
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
-    """Genera un PDF vectorial de alta calidad del checklist general.
-    A diferencia de PNG, el texto queda real en PDF y se puede leer al hacer zoom o imprimir.
-    """
+    """Genera un PDF de alta calidad usando la tabla del checklist con textos grandes."""
+    img_buffer = make_matrix_image(df, title)
     pdf_buffer = BytesIO()
 
-    page_size = landscape(A2)
-    margin = 24
+    page_size = landscape(A3)
     doc = SimpleDocTemplate(
         pdf_buffer,
         pagesize=page_size,
-        leftMargin=margin,
-        rightMargin=margin,
-        topMargin=margin,
-        bottomMargin=margin,
+        leftMargin=18,
+        rightMargin=18,
+        topMargin=18,
+        bottomMargin=18,
     )
 
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "ChecklistTitle",
-        parent=styles["Title"],
-        fontName="Helvetica-Bold",
-        fontSize=32,
-        leading=36,
-        textColor=colors.HexColor("#25558C"),
-        alignment=TA_CENTER,
-        spaceAfter=18,
-    )
-    header_style = ParagraphStyle(
-        "HeaderCell",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=24,
-        leading=28,
-        textColor=colors.white,
-        alignment=TA_CENTER,
-    )
-    body_style = ParagraphStyle(
-        "BodyCell",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=22,
-        leading=26,
-        textColor=colors.HexColor("#262837"),
-        alignment=TA_CENTER,
-    )
+    # Mantener proporción y ocupar el ancho completo de A3 horizontal.
+    pil_img = Image.open(BytesIO(img_buffer.getvalue()))
+    page_w, page_h = page_size
+    max_w = page_w - 36
+    max_h = page_h - 36
+    ratio = min(max_w / pil_img.width, max_h / pil_img.height)
+    img_w = pil_img.width * ratio
+    img_h = pil_img.height * ratio
 
-    def cell_text(value: str, col: str) -> str:
-        value = str(value or "")
-        if value == "OK":
-            return '<font color="#2ca25f">●</font> OK'
-        if value == "NO":
-            return '<font color="#ef2f32">●</font> NO'
-        if value == "PEND":
-            return '<font color="#f39c12">●</font> PEND'
-        if value == "N/A":
-            return '<font color="#9a9a9a">●</font> N/A'
-        if col == "% Cumplimiento":
-            try:
-                n = float(value.replace("%", ""))
-            except Exception:
-                n = 0
-            color = "#2ca25f" if n >= 80 else "#f39c12" if n >= 50 else "#ef2f32"
-            return f'<font color="{color}">●</font> {html.escape(value)}'
-        return html.escape(value)
-
-    cols = list(df.columns)
-    data = [[Paragraph(html.escape(str(c)), header_style) for c in cols]]
-    for _, row in df.iterrows():
-        data.append([Paragraph(cell_text(row[c], c), body_style) for c in cols])
-
-    usable_width = page_size[0] - (margin * 2)
-    fixed_width = 170 + 230
-    activity_cols = max(len(cols) - 2, 1)
-    activity_width = max(260, (usable_width - fixed_width) / activity_cols)
-    col_widths = []
-    for c in cols:
-        if c == "Tienda":
-            col_widths.append(170)
-        elif c == "% Cumplimiento":
-            col_widths.append(230)
-        else:
-            col_widths.append(activity_width)
-
-    table = Table(data, colWidths=col_widths, repeatRows=1)
-    style_cmds = [
-        ("GRID", (0, 0), (-1, -1), 1.2, colors.black),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2f67a8")),
-        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#a6a6a6")),
-        ("BACKGROUND", (-1, 0), (-1, 0), colors.HexColor("#a6a6a6")),
-        ("TOPPADDING", (0, 0), (-1, -1), 12),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-    ]
-    for r in range(1, len(data)):
-        bg = colors.HexColor("#d9e8f6") if r % 2 == 0 else colors.white
-        style_cmds.append(("BACKGROUND", (0, r), (-1, r), bg))
-    table.setStyle(TableStyle(style_cmds))
-
-    story = [Paragraph(title, title_style), Spacer(1, 12), table]
-    doc.build(story)
+    report_img = RLImage(BytesIO(img_buffer.getvalue()), width=img_w, height=img_h)
+    doc.build([report_img])
     pdf_buffer.seek(0)
     return pdf_buffer
+
 
 def safe_filename(value: str) -> str:
     """Limpia texto para usarlo como nombre de archivo."""
@@ -593,24 +510,28 @@ def make_activity_kpis(matrix_df: pd.DataFrame, conceptos: list[str]) -> pd.Data
 
 
 def render_activity_cards(activity_df: pd.DataFrame) -> str:
-    """Tarjetas superiores: cumplimiento por actividad, no por estatus general."""
+    """Tarjetas superiores enlazadas a los encabezados activos del checklist."""
     if activity_df.empty:
-        return '<div class="activity-card"><div class="activity-title">Sin actividades activas</div><div class="activity-number">0%</div></div>'
-    parts = ['<div class="activity-wrap">']
+        return "<div class='activity-wrap'><div class='activity-card'><div class='activity-title'>Sin actividades activas</div><div class='activity-number'>0%</div></div></div>"
+
+    parts = ["<div class='activity-wrap'>"]
     for _, row in activity_df.iterrows():
         pct = float(row["% Cumplimiento"])
         cls = "good" if pct >= 90 else "mid" if pct >= 70 else "bad"
         actividad = html.escape(str(row["Actividad"]))
-        parts.append(f"""
-        <div class="activity-card {cls}">
-            <div class="activity-title">{actividad}</div>
-            <div class="activity-number">{pct:.0f}%</div>
-            <div class="activity-label">Cumplimiento</div>
-            <div class="activity-bar"><span style="width:{max(0,min(100,pct)):.0f}%"></span></div>
-            <div class="activity-foot">{pct:.0f}% cumplimiento actividad · {int(row['Aceptadas'])} / {int(row['Requeridas'])} aceptadas</div>
-        </div>
-        """)
-    parts.append('</div>')
+        aceptadas = int(row["Aceptadas"])
+        requeridas = int(row["Requeridas"])
+        width_pct = max(0, min(100, pct))
+        parts.append(
+            f"<div class='activity-card {cls}'>"
+            f"<div class='activity-title'>{actividad}</div>"
+            f"<div class='activity-number'>{pct:.0f}%</div>"
+            f"<div class='activity-label'>Cumplimiento</div>"
+            f"<div class='activity-bar'><span style='width:{width_pct:.0f}%'></span></div>"
+            f"<div class='activity-foot'>{pct:.0f}% cumplimiento actividad · {aceptadas} / {requeridas} aceptadas</div>"
+            f"</div>"
+        )
+    parts.append("</div>")
     return "".join(parts)
 
 def wrap_text_to_width(draw, text: str, font, max_width: int):
@@ -666,7 +587,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">ES Check List Evidencias</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Control de evidencias por tienda</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Operaciones Ropa · Control de evidencias por tienda</div>', unsafe_allow_html=True)
 
 config = load_config()
 evidencias = load_evidences()
@@ -712,9 +633,9 @@ with tab1:
     st.caption("El cumplimiento considera evidencias aceptadas. En administración, cada punto puede modificarse desde su propio menú y también puede marcarse como N/A.")
     st.markdown(render_portal_table(matrix), unsafe_allow_html=True)
 
-    pdf_buffer = make_matrix_pdf(matrix, f"ES Check List Evidencias | Checklist General | {semana}")
+    pdf_buffer = make_matrix_pdf(matrix, f"ES Check List Evidencias | {semana}")
     st.download_button(
-        "📄 Descargar Checklist PDF",
+        "📄 Descargar checklist como PDF",
         data=pdf_buffer.getvalue(),
         file_name=f"ES_Check_List_Evidencias_{semana}.pdf".replace(" ", "_"),
         mime="application/pdf"
@@ -803,7 +724,7 @@ with tab1:
 
 with tab2:
     st.subheader("Carga de evidencias por tienda")
-    st.caption("Selecciona la tienda. Las actividades están enlazadas directamente con los encabezados activos del checklist general.")
+    st.caption("Selecciona la tienda. Las actividades se muestran automáticamente de acuerdo con los encabezados activos del checklist.")
 
     tienda = st.selectbox("Filtro por tienda", TIENDAS_DEFAULT, key="tienda_carga_evidencia")
     responsable = st.text_input("Responsable", key="responsable_general")
@@ -811,11 +732,11 @@ with tab2:
     if not active_concepts:
         st.warning("No hay actividades activas en el checklist. El administrador debe configurar al menos un encabezado activo.")
     else:
-        st.markdown("### Actividades enlazadas al checklist general")
-        st.caption("Cada actividad corresponde exactamente a una columna del checklist: GANCHOS 30%, GANCHOS 40%, GANCHOS 50%, EXHIBICIÓN DÍA DEL PADRE, etc.")
+        st.markdown("### Actividades del checklist")
+        st.caption("En cada actividad puedes cargar evidencia desde cámara o seleccionarla desde galería/archivos.")
 
         for concepto in active_concepts:
-            with st.expander(f"Actividad / encabezado: {concepto}", expanded=False):
+            with st.expander(f"Actividad: {concepto}", expanded=False):
                 comentario = st.text_area(
                     "Comentario de tienda",
                     key=f"comentario_{tienda}_{concepto}"
