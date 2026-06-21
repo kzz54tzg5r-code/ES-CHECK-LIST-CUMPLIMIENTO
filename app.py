@@ -8,8 +8,9 @@ from io import BytesIO
 import uuid
 import html
 from PIL import Image, ImageDraw, ImageFont
-from reportlab.platypus import SimpleDocTemplate, Image as RLImage
 from reportlab.lib.pagesizes import landscape, A3
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 
 # =============================
 # ORION - CHECKLIST EVIDENCIAS
@@ -362,31 +363,34 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
 
 
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
-    """Genera un PDF de alta calidad usando la tabla del checklist con textos grandes."""
+    """Genera un PDF estable y legible del checklist general.
+
+    Se dibuja la imagen directamente sobre el canvas de ReportLab para evitar
+    LayoutError cuando el checklist crece en filas o columnas.
+    La página se adapta al tamaño de la tabla para conservar textos visibles.
+    """
     img_buffer = make_matrix_image(df, title)
+    img_bytes = img_buffer.getvalue()
+    pil_img = Image.open(BytesIO(img_bytes))
+
+    # Convertir pixeles a puntos. Un factor más alto da letras más grandes en PDF.
+    scale = 0.32
+    page_w = max(landscape(A3)[0], pil_img.width * scale)
+    page_h = max(landscape(A3)[1], pil_img.height * scale)
+
     pdf_buffer = BytesIO()
-
-    page_size = landscape(A3)
-    doc = SimpleDocTemplate(
-        pdf_buffer,
-        pagesize=page_size,
-        leftMargin=18,
-        rightMargin=18,
-        topMargin=18,
-        bottomMargin=18,
+    c = canvas.Canvas(pdf_buffer, pagesize=(page_w, page_h))
+    c.drawImage(
+        ImageReader(BytesIO(img_bytes)),
+        0,
+        0,
+        width=page_w,
+        height=page_h,
+        preserveAspectRatio=True,
+        anchor="c",
     )
-
-    # Mantener proporción y ocupar el ancho completo de A3 horizontal.
-    pil_img = Image.open(BytesIO(img_buffer.getvalue()))
-    page_w, page_h = page_size
-    max_w = page_w - 36
-    max_h = page_h - 36
-    ratio = min(max_w / pil_img.width, max_h / pil_img.height)
-    img_w = pil_img.width * ratio
-    img_h = pil_img.height * ratio
-
-    report_img = RLImage(BytesIO(img_buffer.getvalue()), width=img_w, height=img_h)
-    doc.build([report_img])
+    c.showPage()
+    c.save()
     pdf_buffer.seek(0)
     return pdf_buffer
 
