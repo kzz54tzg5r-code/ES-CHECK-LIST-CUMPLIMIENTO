@@ -653,38 +653,71 @@ with tab1:
         if not active_concepts:
             st.info("No hay encabezados activos en el checklist.")
         else:
-            st.markdown("**Acción rápida por tienda**")
-            st.caption("Selecciona una tienda y marca todas sus actividades activas en un solo paso. Esto también actualiza el checklist general y sus porcentajes.")
+            st.markdown("**Acción rápida por tiendas**")
+            st.caption("Selecciona una o varias tiendas y marca todas sus actividades activas en un solo paso. Esto también actualiza el checklist general y sus porcentajes.")
+
             col_store, col_status, col_apply = st.columns([3, 2, 2])
+
             with col_store:
-                tienda_masiva = st.selectbox(
-                    "Tienda",
-                    TIENDAS_DEFAULT,
-                    key=f"tienda_masiva_{semana}"
+                seleccionar_todas_tiendas = st.checkbox(
+                    "Seleccionar todas las tiendas",
+                    value=False,
+                    key=f"seleccionar_todas_tiendas_{semana}"
                 )
+
+                if seleccionar_todas_tiendas:
+                    tiendas_masivas = TIENDAS_DEFAULT.copy()
+                    st.success(f"{len(tiendas_masivas)} tiendas seleccionadas")
+                else:
+                    tiendas_masivas = st.multiselect(
+                        "Tiendas",
+                        TIENDAS_DEFAULT,
+                        placeholder="Selecciona una o varias tiendas",
+                        key=f"tiendas_masivas_{semana}"
+                    )
+
             with col_status:
                 estatus_masivo = st.selectbox(
                     "Marcar todas las actividades como",
                     ["Aceptada", "Pendiente", "Rechazada", "N/A", "Sin marcar"],
                     key=f"estatus_masivo_{semana}"
                 )
+
             with col_apply:
                 st.write("")
                 st.write("")
-                if st.button("Aplicar a toda la tienda", type="primary", key=f"aplicar_tienda_{semana}"):
+                aplicar_masivo = st.button(
+                    "Aplicar a tiendas seleccionadas",
+                    type="primary",
+                    key=f"aplicar_tiendas_{semana}",
+                    use_container_width=True
+                )
+
+            if aplicar_masivo:
+                if not tiendas_masivas:
+                    st.warning("Selecciona al menos una tienda.")
+                else:
                     manual_new = manual.copy()
                     estatus_guardar = "" if estatus_masivo == "Sin marcar" else estatus_masivo
-                    for concepto_masivo in active_concepts:
-                        manual_new = upsert_manual(
-                            manual_new,
-                            semana,
-                            tienda_masiva,
-                            concepto_masivo,
-                            estatus_guardar,
-                            f"Marcación masiva por tienda: {estatus_masivo}"
-                        )
+                    total_actividades = 0
+
+                    for tienda_masiva in tiendas_masivas:
+                        for concepto_masivo in active_concepts:
+                            manual_new = upsert_manual(
+                                manual_new,
+                                semana,
+                                tienda_masiva,
+                                concepto_masivo,
+                                estatus_guardar,
+                                f"Marcación masiva por tiendas: {estatus_masivo}"
+                            )
+                            total_actividades += 1
+
                     save_df(manual_new, MANUAL_FILE)
-                    st.success(f"{tienda_masiva} actualizado: todas las actividades quedaron como {estatus_masivo}.")
+                    st.success(
+                        f"Se actualizaron {len(tiendas_masivas)} tiendas "
+                        f"({total_actividades} actividades) como {estatus_masivo}."
+                    )
                     st.rerun()
 
             st.divider()
