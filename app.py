@@ -8,13 +8,15 @@ from io import BytesIO
 import uuid
 import html
 from PIL import Image, ImageDraw, ImageFont
+from reportlab.platypus import SimpleDocTemplate, Image as RLImage
+from reportlab.lib.pagesizes import landscape, A3
 
 # =============================
-# ORION - CHECKLIST EVIDENCIAS
+# ES CHECK LIST EVIDENCIAS
 # =============================
 
 st.set_page_config(
-    page_title="ORION | Checklist de Evidencias",
+    page_title="ES Check List Evidencias",
     page_icon="✅",
     layout="wide"
 )
@@ -359,6 +361,30 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
     return buffer
 
 
+
+
+def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
+    """Genera un PDF en alta calidad del checklist general.
+    Se usa la imagen generada por PIL como base, pero se entrega en PDF para mejor lectura e impresión.
+    """
+    img_buffer = make_matrix_image(df, title)
+    pdf_buffer = BytesIO()
+
+    doc = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=landscape(A3),
+        leftMargin=18,
+        rightMargin=18,
+        topMargin=18,
+        bottomMargin=18,
+    )
+
+    # A3 horizontal en puntos: aprox 1190 x 842. Se deja margen para que no corte la tabla.
+    pdf_img = RLImage(BytesIO(img_buffer.getvalue()), width=1150, height=760)
+    doc.build([pdf_img])
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
 def safe_filename(value: str) -> str:
     """Limpia texto para usarlo como nombre de archivo."""
     value = str(value or "").strip()
@@ -376,7 +402,7 @@ def make_zip_by_store(evidencias: pd.DataFrame, semana_zip: str = "") -> BytesIO
     Cada imagen/archivo incluye fecha, tienda, actividad e ID en el nombre.
     """
     buffer = BytesIO()
-    carpeta = safe_filename(f"Evidencias_ORION_{semana_zip}" if semana_zip else "Evidencias_ORION")
+    carpeta = safe_filename(f"ES_Check_List_Evidencias_{semana_zip}" if semana_zip else "ES_Check_List_Evidencias")
     with ZipFile(buffer, "w") as zip_file:
         excel_buffer = BytesIO()
         with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
@@ -550,8 +576,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">ORION | Checklist de Evidencias</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Operaciones Ropa · Control de evidencias por tienda</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">ES Check List Evidencias</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Control de evidencias por tienda</div>', unsafe_allow_html=True)
 
 config = load_config()
 evidencias = load_evidences()
@@ -597,12 +623,12 @@ with tab1:
     st.caption("El cumplimiento considera evidencias aceptadas. En administración, cada punto puede modificarse desde su propio menú y también puede marcarse como N/A.")
     st.markdown(render_portal_table(matrix), unsafe_allow_html=True)
 
-    img_buffer = make_matrix_image(matrix, f"ORION | Checklist General | {semana}")
+    pdf_buffer = make_matrix_pdf(matrix, f"ES Check List Evidencias | Checklist General | {semana}")
     st.download_button(
-        "Descargar checklist como imagen PNG",
-        data=img_buffer.getvalue(),
-        file_name=f"Checklist_General_{semana}.png".replace(" ", "_"),
-        mime="image/png"
+        "📄 Descargar Checklist PDF",
+        data=pdf_buffer.getvalue(),
+        file_name=f"ES_Check_List_Evidencias_{semana}.pdf".replace(" ", "_"),
+        mime="application/pdf"
     )
 
     if is_admin:
@@ -876,7 +902,7 @@ if is_admin:
         st.download_button(
             "⬇️ Descargar evidencias por tienda ZIP",
             data=zip_buffer,
-            file_name=f"Evidencias_ORION_{semana}.zip",
+            file_name=f"ES_Check_List_Evidencias_{semana}.zip",
             mime="application/zip"
         )
 

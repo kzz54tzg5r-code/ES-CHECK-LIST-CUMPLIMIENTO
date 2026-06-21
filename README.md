@@ -1,13 +1,12 @@
-# ORION Checklist de Evidencias v9
+# ES Check List Evidencias v10
 
-Actualización incluida:
+Aplicación Streamlit para control de checklist y evidencias por tienda.
 
-- Tarjetas superiores con porcentaje de cumplimiento por actividad.
-- Se conserva el conteo de aceptadas/requeridas.
-- Checklist general editable por administrador desde tabla con opciones: Sin marcar, Pendiente, Aceptada, Rechazada y N/A.
-- Descarga PNG del checklist en ultra alta resolución con texto más grande y legible.
-- Configuración con opción para eliminar columnas/actividades.
-- Usuario Tienda limitado a Checklist General y Carga de Evidencias.
+## Cambios v10
+- Nombre actualizado a **ES Check List Evidencias**.
+- Descarga del checklist general en **PDF** en lugar de PNG.
+- Conserva edición de checklist, evidencias, validación admin, N/A, eliminación de columnas y ZIP de evidencias.
 
-Usuario administrador: `admin`
-Contraseña: `admin123`
+## Acceso administrador
+Usuario: Administrador
+Contraseña: admin123
