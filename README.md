@@ -1,3 +1,3 @@
-# ES Check List Evidencias v31
+# ES Check List Evidencias v32
 
-PDF con iconos vectoriales de ReportLab. No usa BytesIO ni PNG para iconos.
+PDF corregido sin BytesIO en logos ni iconos.

@@ -432,9 +432,9 @@ def pdf_status_icon(status: str):
         "N/A": colors.HexColor("#6B7280"),
     }
     labels = {
-        "OK": "✓",
+        "OK": "OK",
         "PEND": "!",
-        "NO": "✕",
+        "NO": "X",
         "N/A": "N/A",
     }
 
@@ -445,7 +445,7 @@ def pdf_status_icon(status: str):
     if status == "N/A":
         d.add(String(10, 7, label, textAnchor="middle", fontName="Helvetica-Bold", fontSize=6, fillColor=colors.white))
     else:
-        d.add(String(10, 5.5, label, textAnchor="middle", fontName="Helvetica-Bold", fontSize=13, fillColor=colors.white))
+        d.add(String(10, 5.5, label, textAnchor="middle", fontName="Helvetica-Bold", fontSize=11, fillColor=colors.white))
 
     return d
 
@@ -474,8 +474,7 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
     if PRICE_LOGO.exists():
         logo = RLImage(str(PRICE_LOGO), width=1.45*inch, height=0.75*inch)
     else:
-        logo_bytes = BytesIO(base64.b64decode(PRICE_LOGO_B64))
-        logo = RLImage(logo_bytes, width=1.45*inch, height=0.75*inch)
+        logo = Paragraph("Price Shoes", styles["Heading2"])
 
     usable_width = landscape(A3)[0] - doc.leftMargin - doc.rightMargin
 
@@ -539,8 +538,8 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
             col_widths.append(activity_w)
 
     display_map = {
-        "OK": "✓",
-        "NO": "✕",
+        "OK": "OK",
+        "NO": "X",
         "PEND": "!",
         "N/A": "N/A",
         "": "",
