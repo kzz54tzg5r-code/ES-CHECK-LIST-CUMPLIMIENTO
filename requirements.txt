@@ -1,5 +1,8 @@
-streamlit
-pandas
-openpyxl
-pillow
-reportlab
+# ES Check List Evidencias v29 limpio
+
+Correcciones:
+- app.py limpio en UTF-8.
+- Se elimina el base64 enorme del logo dentro del código.
+- Logo Price Shoes se carga desde assets/price_shoes.png.
+- requirements.txt limpio, solo dependencias.
+- PDF conserva iconos generados como imagen para evitar problemas de fuente.
