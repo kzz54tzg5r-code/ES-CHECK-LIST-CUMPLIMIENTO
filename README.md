@@ -1,8 +1,10 @@
-# ES Check List Evidencias v27
+# ES Check List Evidencias v28
 
-Corrección:
-- PDF estable en Streamlit Cloud.
-- Se evita usar caracteres Unicode en PDF.
-- El PDF usa texto simple con fondo semaforizado:
-  ACEPTADA / PENDIENTE / RECHAZADA / N/A / blanco.
-- Mantiene en pantalla ✓, !, ✕, N/A y blanco.
+Cambios:
+- PDF con iconos reales dentro del checklist:
+  - Palomita verde para Aceptada
+  - Signo ! naranja para Pendiente
+  - Tache rojo para Rechazada
+  - N/A gris
+  - Sin marcar en blanco
+- Se usan imágenes generadas internamente para evitar fallas de fuentes en Streamlit Cloud.
