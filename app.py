@@ -450,6 +450,102 @@ def pdf_status_icon(status: str):
     return d
 
 
+
+def pdf_activity_kpi_table(df: pd.DataFrame, cols: list[str], styles) -> Table | None:
+    """Tabla superior para PDF con % de cumplimiento por actividad."""
+    activity_cols = [c for c in cols if c not in ["Tienda", "% Cumplimiento"]]
+    if not activity_cols:
+        return None
+
+    kpi_style_title = ParagraphStyle(
+        "KpiTitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=11,
+        alignment=1,
+        textColor=colors.HexColor("#202235"),
+    )
+    kpi_style_pct = ParagraphStyle(
+        "KpiPct",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        leading=17,
+        alignment=1,
+    )
+    kpi_style_small = ParagraphStyle(
+        "KpiSmall",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7,
+        leading=9,
+        alignment=1,
+        textColor=colors.HexColor("#555555"),
+    )
+
+    row = []
+    col_widths = []
+
+    for actividad in activity_cols:
+        serie = df[actividad].astype(str)
+        requeridas = int((serie != "N/A").sum())
+        aceptadas = int((serie == "OK").sum())
+        pct = round((aceptadas / requeridas * 100), 0) if requeridas else 0
+
+        if pct >= 90:
+            pct_color = "#2CA25F"
+            bg = colors.HexColor("#E9F7EF")
+        elif pct >= 70:
+            pct_color = "#F39C12"
+            bg = colors.HexColor("#FFF7D6")
+        else:
+            pct_color = "#E31A1C"
+            bg = colors.HexColor("#FDECEC")
+
+        kpi_style_pct_colored = ParagraphStyle(
+            f"KpiPct{actividad}",
+            parent=kpi_style_pct,
+            textColor=colors.HexColor(pct_color),
+        )
+
+        card = [
+            Paragraph(str(actividad), kpi_style_title),
+            Paragraph(f"{pct:.0f}%", kpi_style_pct_colored),
+            Paragraph(f"{aceptadas} / {requeridas} aceptadas", kpi_style_small),
+        ]
+        row.append(card)
+        col_widths.append(2.25 * inch)
+
+    tbl = Table([row], colWidths=col_widths)
+
+    commands = [
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D7DEEA")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]
+
+    for idx, actividad in enumerate(activity_cols):
+        serie = df[actividad].astype(str)
+        requeridas = int((serie != "N/A").sum())
+        aceptadas = int((serie == "OK").sum())
+        pct = round((aceptadas / requeridas * 100), 0) if requeridas else 0
+        if pct >= 90:
+            bg = colors.HexColor("#E9F7EF")
+        elif pct >= 70:
+            bg = colors.HexColor("#FFF7D6")
+        else:
+            bg = colors.HexColor("#FDECEC")
+        commands.append(("BACKGROUND", (idx, 0), (idx, 0), bg))
+
+    tbl.setStyle(TableStyle(commands))
+    return tbl
+
+
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
     """PDF corporativo legible con tabla vectorial y saltos de página."""
     pdf_buffer = BytesIO()
@@ -522,6 +618,14 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
     elements.append(Spacer(1, 8))
 
     cols = list(df.columns)
+
+    elements.append(Paragraph("<b>% de cumplimiento por actividad</b>", normal_style))
+    elements.append(Spacer(1, 5))
+    kpi_tbl = pdf_activity_kpi_table(df, cols, styles)
+    if kpi_tbl is not None:
+        elements.append(kpi_tbl)
+        elements.append(Spacer(1, 10))
+
     page_width = landscape(A3)[0] - 48
     tienda_w = 0.9 * inch
     pct_w = 1.35 * inch
