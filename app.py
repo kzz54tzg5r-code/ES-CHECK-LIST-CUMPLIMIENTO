@@ -435,6 +435,25 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
     elements.append(bar)
     elements.append(Spacer(1, 10))
     elements.append(Paragraph(f"{title} | Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}", normal_style))
+    elements.append(Spacer(1, 6))
+
+    legend_style = ParagraphStyle("LegendPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, leading=12)
+    legend = Table([[
+        Paragraph('<font color="#2CA25F">● Aceptada</font>', legend_style),
+        Paragraph('<font color="#F39C12">● Pendiente</font>', legend_style),
+        Paragraph('<font color="#E31A1C">● Rechazada</font>', legend_style),
+        Paragraph('<font color="#6B7280">● N/A</font>', legend_style),
+        Paragraph('<font color="#B8B8B8">○ Sin marcar</font>', legend_style),
+    ]], colWidths=[1.5*inch, 1.5*inch, 1.6*inch, 1.0*inch, 1.5*inch])
+    legend.setStyle(TableStyle([
+        ("BOX", (0,0), (-1,-1), 0.5, colors.HexColor("#D7DEEA")),
+        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#F7F9FF")),
+        ("TOPPADDING", (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("LEFTPADDING", (0,0), (-1,-1), 6),
+        ("RIGHTPADDING", (0,0), (-1,-1), 6),
+    ]))
+    elements.append(legend)
     elements.append(Spacer(1, 8))
 
     cols = list(df.columns)
@@ -454,10 +473,10 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
             col_widths.append(activity_w)
 
     display_map = {
-        "OK": "●",
-        "NO": "●",
-        "PEND": "●",
-        "N/A": "●",
+        "OK": "● Aceptada",
+        "NO": "● Rechazada",
+        "PEND": "● Pendiente",
+        "N/A": "● N/A",
         "": "○",
     }
 
@@ -466,8 +485,18 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
 
     for page_idx, chunk in enumerate(chunks):
         data = [[Paragraph(str(c), head_style) for c in cols]]
+        status_values_by_cell = []
+
         for _, row in chunk.iterrows():
-            data.append([Paragraph(display_map.get(str(row[c]), str(row[c])), cell_style) for c in cols])
+            pdf_row = []
+            status_row = []
+            for c in cols:
+                raw_value = str(row[c])
+                display_value = display_map.get(raw_value, raw_value)
+                pdf_row.append(Paragraph(display_value, cell_style))
+                status_row.append(raw_value)
+            data.append(pdf_row)
+            status_values_by_cell.append(status_row)
 
         tbl = Table(data, colWidths=col_widths, repeatRows=1)
         commands = [
@@ -480,8 +509,36 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
             ("TOPPADDING", (0,0), (-1,-1), 7),
             ("BOTTOMPADDING", (0,0), (-1,-1), 7),
         ]
+
+        semaforo_text = {
+            "OK": colors.HexColor("#2CA25F"),
+            "NO": colors.HexColor("#E31A1C"),
+            "PEND": colors.HexColor("#F39C12"),
+            "N/A": colors.HexColor("#6B7280"),
+            "": colors.HexColor("#B8B8B8"),
+        }
+
         for ridx in range(1, len(data)):
             commands.append(("BACKGROUND", (0,ridx), (-1,ridx), colors.HexColor("#D9E8F6") if ridx % 2 == 0 else colors.white))
+
+            for cidx, raw_value in enumerate(status_values_by_cell[ridx - 1]):
+                col_name = cols[cidx]
+
+                if col_name not in ["Tienda", "% Cumplimiento"]:
+                    commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), semaforo_text.get(raw_value, colors.black)))
+
+                if col_name == "% Cumplimiento":
+                    try:
+                        pct_value = float(str(raw_value).replace("%", ""))
+                    except Exception:
+                        pct_value = 0
+                    if pct_value >= 90:
+                        commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#2CA25F")))
+                    elif pct_value >= 70:
+                        commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#F39C12")))
+                    else:
+                        commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#E31A1C")))
+
         tbl.setStyle(TableStyle(commands))
         elements.append(tbl)
 
