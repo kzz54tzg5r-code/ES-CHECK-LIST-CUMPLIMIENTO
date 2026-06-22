@@ -407,7 +407,7 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
     bar_style = ParagraphStyle("BarPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=17, leading=20, textColor=colors.white)
     normal_style = ParagraphStyle("NormalPS", parent=styles["Normal"], fontName="Helvetica", fontSize=11, leading=13)
     head_style = ParagraphStyle("HeadPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=14, alignment=1, textColor=colors.white)
-    cell_style = ParagraphStyle("CellPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=14, alignment=1)
+    cell_style = ParagraphStyle("CellPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=16, leading=18, alignment=1)
 
     elements = []
 
@@ -417,15 +417,21 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
         logo_bytes = BytesIO(base64.b64decode(PRICE_LOGO_B64))
         logo = RLImage(logo_bytes, width=1.45*inch, height=0.75*inch)
 
-    header = Table([[logo, Paragraph("ES Check List Evidencias", title_style)]], colWidths=[2.0*inch, 12.0*inch])
+    usable_width = landscape(A3)[0] - doc.leftMargin - doc.rightMargin
+
+    header = Table(
+        [[logo, Paragraph("ES Check List Evidencias", title_style)]],
+        colWidths=[2.1*inch, usable_width - 2.1*inch]
+    )
     header.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("ALIGN", (0,0), (0,0), "LEFT"),
         ("ALIGN", (1,0), (1,0), "RIGHT"),
         ("BOTTOMPADDING", (0,0), (-1,-1), 8),
     ]))
     elements.append(header)
 
-    bar = Table([[Paragraph("Corporativo · Producto Ropa", bar_style)]], colWidths=[14.0*inch])
+    bar = Table([[Paragraph("Corporativo · Producto Ropa", bar_style)]], colWidths=[usable_width])
     bar.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#E6007E")),
         ("TOPPADDING", (0,0), (-1,-1), 7),
@@ -473,10 +479,10 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
             col_widths.append(activity_w)
 
     display_map = {
-        "OK": "● Aceptada",
-        "NO": "● Rechazada",
-        "PEND": "● Pendiente",
-        "N/A": "● N/A",
+        "OK": "●",
+        "NO": "●",
+        "PEND": "●",
+        "N/A": "●",
         "": "○",
     }
 
@@ -506,8 +512,8 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
             ("GRID", (0,0), (-1,-1), 0.65, colors.HexColor("#1B1B1B")),
             ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
             ("ALIGN", (0,0), (-1,-1), "CENTER"),
-            ("TOPPADDING", (0,0), (-1,-1), 7),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+            ("TOPPADDING", (0,0), (-1,-1), 8),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
         ]
 
         semaforo_text = {
@@ -516,6 +522,13 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
             "PEND": colors.HexColor("#F39C12"),
             "N/A": colors.HexColor("#6B7280"),
             "": colors.HexColor("#B8B8B8"),
+        }
+        semaforo_bg = {
+            "OK": colors.HexColor("#E9F7EF"),
+            "NO": colors.HexColor("#FDECEC"),
+            "PEND": colors.HexColor("#FFF7D6"),
+            "N/A": colors.HexColor("#F1F3F5"),
+            "": None,
         }
 
         for ridx in range(1, len(data)):
@@ -526,6 +539,9 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
 
                 if col_name not in ["Tienda", "% Cumplimiento"]:
                     commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), semaforo_text.get(raw_value, colors.black)))
+                    bg_status = semaforo_bg.get(raw_value)
+                    if bg_status is not None:
+                        commands.append(("BACKGROUND", (cidx, ridx), (cidx, ridx), bg_status))
 
                 if col_name == "% Cumplimiento":
                     try:

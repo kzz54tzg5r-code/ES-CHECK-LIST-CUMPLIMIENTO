@@ -1,8 +1,6 @@
-# ES Check List Evidencias v23
+# ES Check List Evidencias v25
 
 Cambios:
-- En administrador la matriz mantiene casillas circulares.
-- Al seleccionar una casilla se despliega el menú.
-- Leyenda de estatus visible.
-- Encabezado corregido.
-- Logo integrado.
+- PDF ajustado al ancho de la hoja.
+- Semaforización dentro de la tabla del PDF.
+- Celdas del checklist con fondo suave por estatus.
