@@ -697,7 +697,6 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
         )
 
         kpi_row = []
-        kpi_widths = []
         kpi_cmds = [
             ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D7DEEA")),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -707,6 +706,11 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ]
+
+        # Mantener KPIs compactos y centrados, no extendidos a todo el ancho.
+        kpi_card_w = min(1.65 * inch, usable_width / max(1, len(activity_cols)))
+        kpi_total_w = kpi_card_w * len(activity_cols)
+        kpi_left_pad = max((usable_width - kpi_total_w) / 2, 0)
 
         for idx, actividad in enumerate(activity_cols):
             serie = df[actividad].astype(str)
@@ -727,14 +731,27 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
                 Paragraph(f"{pct:.0f}%", pct_style),
                 Paragraph(f"{aceptadas}/{requeridas}", kpi_small_style),
             ])
-            kpi_widths.append(usable_width / len(activity_cols))
             kpi_cmds.append(("BACKGROUND", (idx, 0), (idx, 0), bg))
 
-        kpi_tbl = Table([kpi_row], colWidths=kpi_widths)
+        kpi_tbl = Table([kpi_row], colWidths=[kpi_card_w] * len(activity_cols))
         kpi_tbl.setStyle(TableStyle(kpi_cmds))
+
+        kpi_container = Table(
+            [[Paragraph("", normal_style), kpi_tbl, Paragraph("", normal_style)]],
+            colWidths=[kpi_left_pad, kpi_total_w, max(usable_width - kpi_left_pad - kpi_total_w, 0)]
+        )
+        kpi_container.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (1, 0), (1, 0), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+
         elements.append(Paragraph("<b>% cumplimiento por actividad</b>", normal_style))
         elements.append(Spacer(1, 3))
-        elements.append(kpi_tbl)
+        elements.append(kpi_container)
         elements.append(Spacer(1, 5))
 
     legend_style = ParagraphStyle(
