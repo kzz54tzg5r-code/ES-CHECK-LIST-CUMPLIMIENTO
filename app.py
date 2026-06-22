@@ -547,7 +547,7 @@ def pdf_activity_kpi_table(df: pd.DataFrame, cols: list[str], styles) -> Table |
 
 
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
-    """PDF corporativo legible con tabla vectorial y saltos de página."""
+    """PDF corporativo optimizado para una sola hoja A3 horizontal."""
     pdf_buffer = BytesIO()
     doc = SimpleDocTemplate(
         pdf_buffer,
@@ -742,9 +742,6 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
 
         tbl.setStyle(TableStyle(commands))
         elements.append(tbl)
-
-        if page_idx < len(chunks) - 1:
-            elements.append(PageBreak())
 
     doc.build(elements)
     pdf_buffer.seek(0)
