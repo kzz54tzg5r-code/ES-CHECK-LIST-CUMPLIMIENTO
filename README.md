@@ -1,13 +1,8 @@
-# ES Check List Evidencias v20
+# ES Check List Evidencias v21
 
-Versión con:
-- Encabezado corporativo Price Shoes.
-- Leyenda: Corporativo · Producto Ropa.
-- Matriz editable por administrador desde la tabla.
-- Carga y validación de evidencias.
-- PDF corporativo legible con tabla vectorial.
-- Descarga de evidencias en ZIP.
-
-Usuario admin:
-- Usuario: Administrador
-- Contraseña: admin123
+Cambios:
+- Encabezado sin duplicarse.
+- Logo Price Shoes integrado.
+- Barra: Corporativo · Producto Ropa.
+- Matriz principal editable directamente por administrador.
+- PDF corporativo con tabla legible.
