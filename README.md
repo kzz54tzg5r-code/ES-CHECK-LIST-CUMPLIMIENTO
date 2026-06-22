@@ -1,11 +1,8 @@
-# ES Check List Evidencias v26
+# ES Check List Evidencias v27
 
-Cambios:
-- Hora del PDF en horario de México (America/Mexico_City).
-- Checklist y PDF muestran:
-  - ✓ verde = Aceptada
-  - ! naranja = Pendiente
-  - ✕ rojo = Rechazada
-  - N/A gris = No aplica
-  - blanco = Sin marcar
-- PDF mantiene semaforización dentro de la tabla.
+Corrección:
+- PDF estable en Streamlit Cloud.
+- Se evita usar caracteres Unicode en PDF.
+- El PDF usa texto simple con fondo semaforizado:
+  ACEPTADA / PENDIENTE / RECHAZADA / N/A / blanco.
+- Mantiene en pantalla ✓, !, ✕, N/A y blanco.
