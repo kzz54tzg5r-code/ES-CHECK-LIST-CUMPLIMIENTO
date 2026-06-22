@@ -19,6 +19,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.graphics.shapes import Drawing, Circle, String
 
 # =============================
 # ORION - CHECKLIST EVIDENCIAS
@@ -35,12 +36,6 @@ DATA_DIR = Path("data_orion")
 ASSETS_DIR = Path("assets")
 PRICE_LOGO = ASSETS_DIR / "price_shoes.png"
 PRICE_LOGO_B64 = ""
-STATUS_ICON_FILES = {
-    "OK": ASSETS_DIR / "status_ok.png",
-    "PEND": ASSETS_DIR / "status_pend.png",
-    "NO": ASSETS_DIR / "status_no.png",
-    "N/A": ASSETS_DIR / "status_na.png",
-}
 EVIDENCE_DIR = DATA_DIR / "evidencias"
 CONFIG_FILE = DATA_DIR / "checklist_config.csv"
 EVIDENCE_FILE = DATA_DIR / "evidencias_registro.csv"
@@ -426,22 +421,33 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
 
 
 def pdf_status_icon(status: str):
-    """Regresa icono de estatus para PDF usando archivos PNG físicos."""
+    """Icono vectorial para PDF: no usa BytesIO, PNG ni ImageReader."""
     if status == "":
         return ""
 
-    icon_path = STATUS_ICON_FILES.get(status)
-    if icon_path and icon_path.exists():
-        return RLImage(str(icon_path), width=0.24 * inch, height=0.24 * inch)
-
-    # Fallback sin imagen, para no romper el PDF
-    fallback = {
-        "OK": "ACEPTADA",
-        "PEND": "PENDIENTE",
-        "NO": "RECHAZADA",
+    colors_map = {
+        "OK": colors.HexColor("#2CA25F"),
+        "PEND": colors.HexColor("#F39C12"),
+        "NO": colors.HexColor("#E31A1C"),
+        "N/A": colors.HexColor("#6B7280"),
+    }
+    labels = {
+        "OK": "✓",
+        "PEND": "!",
+        "NO": "✕",
         "N/A": "N/A",
-    }.get(status, "")
-    return Paragraph(fallback, getSampleStyleSheet()["Normal"])
+    }
+
+    d = Drawing(20, 20)
+    d.add(Circle(10, 10, 9, fillColor=colors_map.get(status, colors.grey), strokeColor=None))
+
+    label = labels.get(status, "")
+    if status == "N/A":
+        d.add(String(10, 7, label, textAnchor="middle", fontName="Helvetica-Bold", fontSize=6, fillColor=colors.white))
+    else:
+        d.add(String(10, 5.5, label, textAnchor="middle", fontName="Helvetica-Bold", fontSize=13, fillColor=colors.white))
+
+    return d
 
 
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:

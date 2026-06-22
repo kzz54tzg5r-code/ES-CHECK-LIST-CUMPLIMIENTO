@@ -1,7 +1,3 @@
-# ES Check List Evidencias v30
+# ES Check List Evidencias v31
 
-Corrección:
-- PDF con iconos de estatus cargados desde archivos PNG físicos.
-- Soluciona error: cannot identify image file BytesIO.
-- app.py limpio en UTF-8.
-- requirements.txt limpio.
+PDF con iconos vectoriales de ReportLab. No usa BytesIO ni PNG para iconos.
