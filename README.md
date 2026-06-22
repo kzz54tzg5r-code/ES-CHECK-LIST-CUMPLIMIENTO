@@ -1,8 +1,3 @@
-# ES Check List Evidencias v33 - leyenda corregida
+# ES Check List Evidencias v36
 
-Basado en ES Check List Evidencias v33.
-
-Ajuste:
-- Corrige la leyenda del PDF para que iconos y textos no se encimen.
-- Mantiene el % de cumplimiento por actividad en el PDF.
-- Mantiene estructura de v33.
+PDF en una sola página real con alto dinámico. Evita que el reporte salga en dos páginas.
