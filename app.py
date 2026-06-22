@@ -547,90 +547,134 @@ def pdf_activity_kpi_table(df: pd.DataFrame, cols: list[str], styles) -> Table |
 
 
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
-    """PDF corporativo legible con tabla vectorial y saltos de página."""
+    """PDF corporativo en una sola hoja A3 horizontal con KPIs y matriz completa."""
     pdf_buffer = BytesIO()
+
+    page_size = landscape(A3)
+    page_w, page_h = page_size
+
     doc = SimpleDocTemplate(
         pdf_buffer,
-        pagesize=landscape(A3),
-        leftMargin=24,
-        rightMargin=24,
-        topMargin=22,
-        bottomMargin=22
+        pagesize=page_size,
+        leftMargin=18,
+        rightMargin=18,
+        topMargin=16,
+        bottomMargin=16
     )
 
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("TitlePS", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=28, leading=32, textColor=colors.HexColor("#202235"), alignment=2)
-    bar_style = ParagraphStyle("BarPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=17, leading=20, textColor=colors.white)
-    normal_style = ParagraphStyle("NormalPS", parent=styles["Normal"], fontName="Helvetica", fontSize=11, leading=13)
-    head_style = ParagraphStyle("HeadPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=14, alignment=1, textColor=colors.white)
-    cell_style = ParagraphStyle("CellPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11, leading=13, alignment=1)
+    usable_width = page_w - doc.leftMargin - doc.rightMargin
+
+    total_rows = max(len(df), 1)
+    if total_rows <= 10:
+        base_font, head_font, kpi_font, row_pad = 9, 9, 10, 3
+    elif total_rows <= 17:
+        base_font, head_font, kpi_font, row_pad = 7.5, 8, 8, 2
+    else:
+        base_font, head_font, kpi_font, row_pad = 6.5, 7, 7, 1.5
+
+    title_style = ParagraphStyle("TitlePS", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, leading=24, textColor=colors.HexColor("#202235"), alignment=2)
+    bar_style = ParagraphStyle("BarPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=14, leading=16, textColor=colors.white)
+    normal_style = ParagraphStyle("NormalPS", parent=styles["Normal"], fontName="Helvetica", fontSize=8, leading=9)
+    head_style = ParagraphStyle("HeadPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=head_font, leading=head_font + 1, alignment=1, textColor=colors.white)
+    cell_style = ParagraphStyle("CellPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=base_font, leading=base_font + 1, alignment=1)
 
     elements = []
 
     if PRICE_LOGO.exists():
-        logo = RLImage(str(PRICE_LOGO), width=1.45*inch, height=0.75*inch)
+        logo = RLImage(str(PRICE_LOGO), width=1.25 * inch, height=0.62 * inch)
     else:
         logo = Paragraph("Price Shoes", styles["Heading2"])
 
-    usable_width = landscape(A3)[0] - doc.leftMargin - doc.rightMargin
-
-    header = Table(
-        [[logo, Paragraph("ES Check List Evidencias", title_style)]],
-        colWidths=[2.1*inch, usable_width - 2.1*inch]
-    )
+    header = Table([[logo, Paragraph("ES Check List Evidencias", title_style)]], colWidths=[1.7 * inch, usable_width - 1.7 * inch])
     header.setStyle(TableStyle([
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("ALIGN", (0,0), (0,0), "LEFT"),
-        ("ALIGN", (1,0), (1,0), "RIGHT"),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, 0), "LEFT"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     elements.append(header)
 
     bar = Table([[Paragraph("Corporativo · Producto Ropa", bar_style)]], colWidths=[usable_width])
     bar.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#E6007E")),
-        ("TOPPADDING", (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
-        ("LEFTPADDING", (0,0), (-1,-1), 12),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E6007E")),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
     ]))
     elements.append(bar)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 5))
     elements.append(Paragraph(f"{title} | Generado: {now_mx().strftime('%d/%m/%Y %H:%M')}", normal_style))
-    elements.append(Spacer(1, 6))
+    elements.append(Spacer(1, 4))
 
-    legend_style = ParagraphStyle("LegendPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, leading=12)
+    cols = list(df.columns)
+    activity_cols = [c for c in cols if c not in ["Tienda", "% Cumplimiento"]]
+
+    if activity_cols:
+        kpi_title_style = ParagraphStyle("KpiTitleCompact", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=kpi_font, leading=kpi_font + 1, alignment=1, textColor=colors.HexColor("#202235"))
+        kpi_pct_style = ParagraphStyle("KpiPctCompact", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=kpi_font + 3, leading=kpi_font + 4, alignment=1)
+        kpi_small_style = ParagraphStyle("KpiSmallCompact", parent=styles["Normal"], fontName="Helvetica", fontSize=max(kpi_font - 1, 5), leading=max(kpi_font, 6), alignment=1, textColor=colors.HexColor("#555555"))
+
+        kpi_row, kpi_widths, kpi_cmds = [], [], [
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D7DEEA")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]
+
+        for idx, actividad in enumerate(activity_cols):
+            serie = df[actividad].astype(str)
+            requeridas = int((serie != "N/A").sum())
+            aceptadas = int((serie == "OK").sum())
+            pct = round((aceptadas / requeridas * 100), 0) if requeridas else 0
+            if pct >= 90:
+                pct_color, bg = "#2CA25F", colors.HexColor("#E9F7EF")
+            elif pct >= 70:
+                pct_color, bg = "#F39C12", colors.HexColor("#FFF7D6")
+            else:
+                pct_color, bg = "#E31A1C", colors.HexColor("#FDECEC")
+
+            pct_style = ParagraphStyle(f"KpiPctCompact{idx}", parent=kpi_pct_style, textColor=colors.HexColor(pct_color))
+            kpi_row.append([
+                Paragraph(str(actividad), kpi_title_style),
+                Paragraph(f"{pct:.0f}%", pct_style),
+                Paragraph(f"{aceptadas}/{requeridas}", kpi_small_style),
+            ])
+            kpi_widths.append(usable_width / len(activity_cols))
+            kpi_cmds.append(("BACKGROUND", (idx, 0), (idx, 0), bg))
+
+        kpi_tbl = Table([kpi_row], colWidths=kpi_widths)
+        kpi_tbl.setStyle(TableStyle(kpi_cmds))
+        elements.append(Paragraph("<b>% cumplimiento por actividad</b>", normal_style))
+        elements.append(Spacer(1, 3))
+        elements.append(kpi_tbl)
+        elements.append(Spacer(1, 5))
+
+    legend_style = ParagraphStyle("LegendPS", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7, leading=8)
     legend = Table([[
         pdf_status_icon("OK"), Paragraph("Aceptada", legend_style),
         pdf_status_icon("PEND"), Paragraph("Pendiente", legend_style),
         pdf_status_icon("NO"), Paragraph("Rechazada", legend_style),
         pdf_status_icon("N/A"), Paragraph("N/A", legend_style),
         Paragraph("", legend_style), Paragraph("Sin marcar: blanco", legend_style),
-    ]], colWidths=[0.32*inch, 1.05*inch, 0.32*inch, 1.15*inch, 0.32*inch, 1.2*inch, 0.32*inch, 0.65*inch, 0.28*inch, 1.35*inch])
+    ]], colWidths=[0.22*inch,0.75*inch,0.22*inch,0.78*inch,0.22*inch,0.85*inch,0.22*inch,0.45*inch,0.18*inch,1.0*inch])
     legend.setStyle(TableStyle([
-        ("BOX", (0,0), (-1,-1), 0.5, colors.HexColor("#D7DEEA")),
-        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#F7F9FF")),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-        ("LEFTPADDING", (0,0), (-1,-1), 6),
-        ("RIGHTPADDING", (0,0), (-1,-1), 6),
+        ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#D7DEEA")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7F9FF")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
     elements.append(legend)
-    elements.append(Spacer(1, 8))
-
-    cols = list(df.columns)
-
-    elements.append(Paragraph("<b>% de cumplimiento por actividad</b>", normal_style))
     elements.append(Spacer(1, 5))
-    kpi_tbl = pdf_activity_kpi_table(df, cols, styles)
-    if kpi_tbl is not None:
-        elements.append(kpi_tbl)
-        elements.append(Spacer(1, 10))
 
-    page_width = landscape(A3)[0] - 48
-    tienda_w = 0.9 * inch
-    pct_w = 1.35 * inch
-    activity_cols = [c for c in cols if c not in ["Tienda", "% Cumplimiento"]]
-    activity_w = max(1.55*inch, (page_width - tienda_w - pct_w) / max(1, len(activity_cols)))
+    tienda_w = 0.75 * inch
+    pct_w = 0.9 * inch
+    available_for_activities = usable_width - tienda_w - pct_w
+    activity_w = available_for_activities / max(1, len(activity_cols))
 
     col_widths = []
     for col in cols:
@@ -641,90 +685,60 @@ def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
         else:
             col_widths.append(activity_w)
 
-    display_map = {
-        "OK": "OK",
-        "NO": "X",
-        "PEND": "!",
-        "N/A": "N/A",
-        "": "",
-    }
+    display_map = {"OK": "OK", "NO": "X", "PEND": "!", "N/A": "N/A", "": ""}
 
-    rows_per_page = 10
-    chunks = [df.iloc[i:i+rows_per_page] for i in range(0, len(df), rows_per_page)]
+    data = [[Paragraph(str(c), head_style) for c in cols]]
+    status_values_by_cell = []
+    for _, row in df.iterrows():
+        pdf_row, status_row = [], []
+        for c in cols:
+            raw_value = str(row[c])
+            if c not in ["Tienda", "% Cumplimiento"]:
+                pdf_row.append(pdf_status_icon(raw_value))
+            else:
+                pdf_row.append(Paragraph(display_map.get(raw_value, raw_value), cell_style))
+            status_row.append(raw_value)
+        data.append(pdf_row)
+        status_values_by_cell.append(status_row)
 
-    for page_idx, chunk in enumerate(chunks):
-        data = [[Paragraph(str(c), head_style) for c in cols]]
-        status_values_by_cell = []
+    tbl = Table(data, colWidths=col_widths, repeatRows=1)
+    commands = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2F67A8")),
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#A6A6A6")),
+        ("BACKGROUND", (-1, 0), (-1, 0), colors.HexColor("#A6A6A6")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#1B1B1B")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), row_pad),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), row_pad),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+    ]
 
-        for _, row in chunk.iterrows():
-            pdf_row = []
-            status_row = []
-            for c in cols:
-                raw_value = str(row[c])
-                if c not in ["Tienda", "% Cumplimiento"]:
-                    pdf_row.append(pdf_status_icon(raw_value))
+    semaforo_bg = {"OK": colors.HexColor("#E9F7EF"), "NO": colors.HexColor("#FDECEC"), "PEND": colors.HexColor("#FFF7D6"), "N/A": colors.HexColor("#F1F3F5"), "": None}
+
+    for ridx in range(1, len(data)):
+        commands.append(("BACKGROUND", (0, ridx), (-1, ridx), colors.HexColor("#D9E8F6") if ridx % 2 == 0 else colors.white))
+        for cidx, raw_value in enumerate(status_values_by_cell[ridx - 1]):
+            col_name = cols[cidx]
+            if col_name not in ["Tienda", "% Cumplimiento"]:
+                bg_status = semaforo_bg.get(raw_value)
+                if bg_status is not None:
+                    commands.append(("BACKGROUND", (cidx, ridx), (cidx, ridx), bg_status))
+            if col_name == "% Cumplimiento":
+                try:
+                    pct_value = float(str(raw_value).replace("%", ""))
+                except Exception:
+                    pct_value = 0
+                if pct_value >= 90:
+                    commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#2CA25F")))
+                elif pct_value >= 70:
+                    commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#F39C12")))
                 else:
-                    pdf_row.append(Paragraph(str(row[c]), cell_style))
-                status_row.append(raw_value)
-            data.append(pdf_row)
-            status_values_by_cell.append(status_row)
+                    commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#E31A1C")))
 
-        tbl = Table(data, colWidths=col_widths, repeatRows=1)
-        commands = [
-            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#2F67A8")),
-            ("BACKGROUND", (0,0), (0,0), colors.HexColor("#A6A6A6")),
-            ("BACKGROUND", (-1,0), (-1,0), colors.HexColor("#A6A6A6")),
-            ("GRID", (0,0), (-1,-1), 0.65, colors.HexColor("#1B1B1B")),
-            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-            ("ALIGN", (0,0), (-1,-1), "CENTER"),
-            ("TOPPADDING", (0,0), (-1,-1), 8),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
-        ]
-
-        semaforo_text = {
-            "OK": colors.HexColor("#2CA25F"),
-            "NO": colors.HexColor("#E31A1C"),
-            "PEND": colors.HexColor("#F39C12"),
-            "N/A": colors.HexColor("#6B7280"),
-            "": colors.HexColor("#B8B8B8"),
-        }
-        semaforo_bg = {
-            "OK": colors.HexColor("#E9F7EF"),
-            "NO": colors.HexColor("#FDECEC"),
-            "PEND": colors.HexColor("#FFF7D6"),
-            "N/A": colors.HexColor("#F1F3F5"),
-            "": None,
-        }
-
-        for ridx in range(1, len(data)):
-            commands.append(("BACKGROUND", (0,ridx), (-1,ridx), colors.HexColor("#D9E8F6") if ridx % 2 == 0 else colors.white))
-
-            for cidx, raw_value in enumerate(status_values_by_cell[ridx - 1]):
-                col_name = cols[cidx]
-
-                if col_name not in ["Tienda", "% Cumplimiento"]:
-                    commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), semaforo_text.get(raw_value, colors.black)))
-                    bg_status = semaforo_bg.get(raw_value)
-                    if bg_status is not None:
-                        commands.append(("BACKGROUND", (cidx, ridx), (cidx, ridx), bg_status))
-
-                if col_name == "% Cumplimiento":
-                    try:
-                        pct_value = float(str(raw_value).replace("%", ""))
-                    except Exception:
-                        pct_value = 0
-                    if pct_value >= 90:
-                        commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#2CA25F")))
-                    elif pct_value >= 70:
-                        commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#F39C12")))
-                    else:
-                        commands.append(("TEXTCOLOR", (cidx, ridx), (cidx, ridx), colors.HexColor("#E31A1C")))
-
-        tbl.setStyle(TableStyle(commands))
-        elements.append(tbl)
-
-        if page_idx < len(chunks) - 1:
-            elements.append(PageBreak())
+    tbl.setStyle(TableStyle(commands))
+    elements.append(tbl)
 
     doc.build(elements)
     pdf_buffer.seek(0)
