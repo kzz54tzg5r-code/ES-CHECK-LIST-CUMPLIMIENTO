@@ -35,6 +35,12 @@ DATA_DIR = Path("data_orion")
 ASSETS_DIR = Path("assets")
 PRICE_LOGO = ASSETS_DIR / "price_shoes.png"
 PRICE_LOGO_B64 = ""
+STATUS_ICON_FILES = {
+    "OK": ASSETS_DIR / "status_ok.png",
+    "PEND": ASSETS_DIR / "status_pend.png",
+    "NO": ASSETS_DIR / "status_no.png",
+    "N/A": ASSETS_DIR / "status_na.png",
+}
 EVIDENCE_DIR = DATA_DIR / "evidencias"
 CONFIG_FILE = DATA_DIR / "checklist_config.csv"
 EVIDENCE_FILE = DATA_DIR / "evidencias_registro.csv"
@@ -420,64 +426,22 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
 
 
 def pdf_status_icon(status: str):
-    """Crea un icono PNG pequeño para ReportLab: ✓, !, ✕, N/A o blanco."""
-    size = 34
-    img = Image.new("RGBA", (size, size), (255, 255, 255, 0))
-    draw = ImageDraw.Draw(img)
-
-    color_map = {
-        "OK": (44, 162, 95, 255),       # verde
-        "PEND": (243, 156, 18, 255),    # naranja
-        "NO": (227, 26, 28, 255),       # rojo
-        "N/A": (107, 114, 128, 255),    # gris
-    }
-
+    """Regresa icono de estatus para PDF usando archivos PNG físicos."""
     if status == "":
         return ""
 
-    color = color_map.get(status, (184, 184, 184, 255))
+    icon_path = STATUS_ICON_FILES.get(status)
+    if icon_path and icon_path.exists():
+        return RLImage(str(icon_path), width=0.24 * inch, height=0.24 * inch)
 
-    # círculo de fondo para que el estatus se vea como semáforo
-    draw.ellipse([1, 1, size - 2, size - 2], fill=color)
-
-    try:
-        font_big = _load_font(24, bold=True)
-        font_small = _load_font(11, bold=True)
-    except Exception:
-        font_big = ImageFont.load_default()
-        font_small = ImageFont.load_default()
-
-    if status == "OK":
-        txt = "✓"
-        font = font_big
-    elif status == "NO":
-        txt = "✕"
-        font = font_big
-    elif status == "PEND":
-        txt = "!"
-        font = font_big
-    elif status == "N/A":
-        txt = "N/A"
-        font = font_small
-    else:
-        txt = ""
-        font = font_big
-
-    if txt:
-        bbox = draw.textbbox((0, 0), txt, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        draw.text(
-            ((size - tw) / 2, (size - th) / 2 - 1),
-            txt,
-            fill=(255, 255, 255, 255),
-            font=font
-        )
-
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return RLImage(buffer, width=0.24 * inch, height=0.24 * inch)
+    # Fallback sin imagen, para no romper el PDF
+    fallback = {
+        "OK": "ACEPTADA",
+        "PEND": "PENDIENTE",
+        "NO": "RECHAZADA",
+        "N/A": "N/A",
+    }.get(status, "")
+    return Paragraph(fallback, getSampleStyleSheet()["Normal"])
 
 
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
