@@ -1,7 +1,13 @@
-# ES Check List Evidencias v16
+# ES Check List Evidencias v20
 
-Cambios:
-- Acción rápida por tiendas con multiselección.
-- Opción para seleccionar todas las tiendas.
-- Aplica Aceptada, Pendiente, Rechazada, N/A o Sin marcar a todas las actividades activas de las tiendas seleccionadas.
-- Conserva PDF por canvas para evitar LayoutError.
+Versión con:
+- Encabezado corporativo Price Shoes.
+- Leyenda: Corporativo · Producto Ropa.
+- Matriz editable por administrador desde la tabla.
+- Carga y validación de evidencias.
+- PDF corporativo legible con tabla vectorial.
+- Descarga de evidencias en ZIP.
+
+Usuario admin:
+- Usuario: Administrador
+- Contraseña: admin123

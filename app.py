@@ -7,10 +7,15 @@ from zipfile import ZipFile
 from io import BytesIO
 import uuid
 import html
+import base64
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.pagesizes import landscape, A3
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 # =============================
 # ORION - CHECKLIST EVIDENCIAS
@@ -24,6 +29,8 @@ st.set_page_config(
 
 ADMIN_PASSWORD = "admin123"
 DATA_DIR = Path("data_orion")
+ASSETS_DIR = Path("assets")
+PRICE_LOGO = ASSETS_DIR / "price_shoes.png"
 EVIDENCE_DIR = DATA_DIR / "evidencias"
 CONFIG_FILE = DATA_DIR / "checklist_config.csv"
 EVIDENCE_FILE = DATA_DIR / "evidencias_registro.csv"
@@ -363,34 +370,146 @@ def make_matrix_image(df: pd.DataFrame, title: str) -> BytesIO:
 
 
 def make_matrix_pdf(df: pd.DataFrame, title: str) -> BytesIO:
-    """Genera un PDF estable y legible del checklist general.
-
-    Se dibuja la imagen directamente sobre el canvas de ReportLab para evitar
-    LayoutError cuando el checklist crece en filas o columnas.
-    La página se adapta al tamaño de la tabla para conservar textos visibles.
-    """
-    img_buffer = make_matrix_image(df, title)
-    img_bytes = img_buffer.getvalue()
-    pil_img = Image.open(BytesIO(img_bytes))
-
-    # Convertir pixeles a puntos. Un factor más alto da letras más grandes en PDF.
-    scale = 0.32
-    page_w = max(landscape(A3)[0], pil_img.width * scale)
-    page_h = max(landscape(A3)[1], pil_img.height * scale)
-
+    """Genera PDF corporativo legible con tabla vectorial, logo y varias páginas."""
     pdf_buffer = BytesIO()
-    c = canvas.Canvas(pdf_buffer, pagesize=(page_w, page_h))
-    c.drawImage(
-        ImageReader(BytesIO(img_bytes)),
-        0,
-        0,
-        width=page_w,
-        height=page_h,
-        preserveAspectRatio=True,
-        anchor="c",
+    doc = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=landscape(A3),
+        leftMargin=26,
+        rightMargin=26,
+        topMargin=24,
+        bottomMargin=24
     )
-    c.showPage()
-    c.save()
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CorpTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=28,
+        textColor=colors.HexColor("#00508C"),
+        leading=32,
+        alignment=2,
+    )
+    sub_style = ParagraphStyle(
+        "CorpSub",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        textColor=colors.white,
+        leading=18,
+    )
+    cell_style = ParagraphStyle(
+        "Cell",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=14,
+        alignment=1,
+    )
+    head_style = ParagraphStyle(
+        "Head",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=14,
+        alignment=1,
+        textColor=colors.white,
+    )
+
+    elements = []
+
+    # Encabezado con logo
+    header_data = []
+    if PRICE_LOGO.exists():
+        logo = RLImage(str(PRICE_LOGO), width=1.45*inch, height=0.75*inch)
+    else:
+        logo = Paragraph("Price Shoes", styles["Heading2"])
+    header_data.append([logo, Paragraph("ES Check List Evidencias", title_style)])
+    header_tbl = Table(header_data, colWidths=[2.0*inch, 12.0*inch])
+    header_tbl.setStyle(TableStyle([
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("ALIGN", (1,0), (1,0), "RIGHT"),
+        ("BOX", (0,0), (-1,-1), 0.5, colors.white),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+    ]))
+    elements.append(header_tbl)
+
+    bar = Table([[Paragraph("Corporativo · Producto Ropa", sub_style)]], colWidths=[14.0*inch])
+    bar.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#E6007E")),
+        ("TEXTCOLOR", (0,0), (-1,-1), colors.white),
+        ("LEFTPADDING", (0,0), (-1,-1), 12),
+        ("RIGHTPADDING", (0,0), (-1,-1), 12),
+        ("TOPPADDING", (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+    ]))
+    elements.append(bar)
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(f"{title} &nbsp;&nbsp; | &nbsp;&nbsp; Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Normal"]))
+    elements.append(Spacer(1, 10))
+
+    cols = list(df.columns)
+
+    # Si hay muchas columnas, mantener texto legible con ancho fijo razonable.
+    page_width = landscape(A3)[0] - 52
+    tienda_w = 0.85*inch
+    pct_w = 1.2*inch
+    activity_cols = [c for c in cols if c not in ["Tienda", "% Cumplimiento"]]
+    activity_w = max(1.55*inch, (page_width - tienda_w - pct_w) / max(1, len(activity_cols)))
+    col_widths = []
+    for c in cols:
+        if c == "Tienda":
+            col_widths.append(tienda_w)
+        elif c == "% Cumplimiento":
+            col_widths.append(pct_w)
+        else:
+            col_widths.append(activity_w)
+
+    status_map = {
+        "OK": "● Aceptada",
+        "NO": "● Rechazada",
+        "PEND": "● Pendiente",
+        "N/A": "● N/A",
+        "": "",
+    }
+
+    rows_per_page = 9
+    chunks = [df.iloc[i:i+rows_per_page].copy() for i in range(0, len(df), rows_per_page)]
+
+    for page_idx, chunk in enumerate(chunks):
+        data = [[Paragraph(str(c), head_style) for c in cols]]
+        for _, r in chunk.iterrows():
+            row_data = []
+            for c in cols:
+                val = str(r[c])
+                display = status_map.get(val, val)
+                row_data.append(Paragraph(display, cell_style))
+            data.append(row_data)
+
+        tbl = Table(data, colWidths=col_widths, repeatRows=1)
+        style_cmds = [
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#0B4F9F")),
+            ("BACKGROUND", (0,0), (0,0), colors.HexColor("#A6A6A6")),
+            ("BACKGROUND", (-1,0), (-1,0), colors.HexColor("#A6A6A6")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("GRID", (0,0), (-1,-1), 0.7, colors.HexColor("#1B1B1B")),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("ALIGN", (0,0), (-1,-1), "CENTER"),
+            ("TOPPADDING", (0,0), (-1,-1), 8),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+            ("FONTNAME", (0,0), (-1,-1), "Helvetica-Bold"),
+        ]
+        for ridx in range(1, len(data)):
+            bg = colors.HexColor("#D9E8F6") if ridx % 2 == 0 else colors.white
+            style_cmds.append(("BACKGROUND", (0,ridx), (-1,ridx), bg))
+        tbl.setStyle(TableStyle(style_cmds))
+        elements.append(tbl)
+
+        if page_idx < len(chunks) - 1:
+            elements.append(PageBreak())
+
+    doc.build(elements)
     pdf_buffer.seek(0)
     return pdf_buffer
 
@@ -573,25 +692,85 @@ def delete_evidence_record(evidencias_df: pd.DataFrame, evidence_id: str) -> pd.
 
 st.markdown("""
 <style>
+:root{
+    --ps-blue:#00508C;
+    --ps-blue2:#0b4f9f;
+    --ps-pink:#e6007e;
+    --soft-blue:#eaf4ff;
+    --line:#d7deea;
+}
+.block-container{padding-top:1.2rem;}
+.corp-header{background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(0,0,0,.06);border:1px solid #edf1f7;margin-bottom:18px;overflow:hidden;}
+.corp-top{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px 20px;}
+.corp-logo{height:62px;object-fit:contain;}
+.corp-title{font-size:34px;font-weight:900;color:#1f2533;margin:0;text-align:right;}
+.corp-subtitle{font-size:15px;color:#5c6475;margin-top:2px;text-align:right;}
+.corp-bar{background:#e6007e;color:white;font-weight:900;font-size:20px;padding:8px 20px;}
 .main-title {font-size: 34px; font-weight: 800; color: #3366CC; margin-bottom: 0px;}
 .subtitle {font-size: 15px; color: #555; margin-top: 0px;}
 .kpi-card {background: #f7f9ff; padding: 18px; border-radius: 14px; border-left: 7px solid #3366CC; box-shadow: 0 2px 8px rgba(0,0,0,.06);}
 .kpi-number {font-size: 28px; font-weight: 800; color: #3366CC;}
 .kpi-label {font-size: 13px; color: #666;}
 .activity-wrap{display:flex;gap:14px;overflow-x:auto;padding:8px 0 14px 0;}
-.activity-card{min-width:230px;background:#f7f9ff;border-radius:14px;padding:16px;border-left:7px solid #3366CC;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.activity-card{min-width:245px;background:#f7f9ff;border-radius:14px;padding:16px;border-left:7px solid #3366CC;box-shadow:0 2px 8px rgba(0,0,0,.06);}
 .activity-card.good{border-left-color:#2ca25f}.activity-card.mid{border-left-color:#f39c12}.activity-card.bad{border-left-color:#e31a1c}
-.activity-title{font-size:13px;font-weight:800;color:#2f3142;white-space:normal;min-height:34px;}
-.activity-number{font-size:30px;font-weight:900;color:#3366CC;margin-top:8px;}
+.activity-title{font-size:14px;font-weight:900;color:#2f3142;white-space:normal;min-height:34px;}
+.activity-number{font-size:34px;font-weight:900;color:#3366CC;margin-top:8px;}
 .activity-card.good .activity-number{color:#2ca25f}.activity-card.mid .activity-number{color:#f39c12}.activity-card.bad .activity-number{color:#e31a1c}
 .activity-label{font-size:12px;color:#666;margin-top:2px}.activity-foot{font-size:12px;color:#555;margin-top:8px;}
 .activity-bar{height:8px;background:#e4e6ef;border-radius:999px;margin-top:10px;overflow:hidden}.activity-bar span{display:block;height:100%;background:#3366CC;border-radius:999px;}
 .activity-card.good .activity-bar span{background:#2ca25f}.activity-card.mid .activity-bar span{background:#f39c12}.activity-card.bad .activity-bar span{background:#e31a1c}
+.portal-table{border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:15px;}
+.portal-table th{background:#0b4f9f;color:white;padding:9px;border:1px solid #1b1b1b;text-align:center;font-weight:900;}
+.portal-table th:first-child,.portal-table th:last-child{background:#a6a6a6;color:white;}
+.portal-table td{border:1px solid #1b1b1b;padding:8px;text-align:center;font-weight:800;}
+.portal-table tr:nth-child(even) td{background:#d9e8f6;}
+.portal-table tr:nth-child(odd) td{background:#ffffff;}
+.portal-table td:first-child{font-weight:900;}
+.dot{height:18px;width:18px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle;border:1px solid rgba(0,0,0,.25);}
+.green{background:#69ad93}.red{background:#e85b35}.amber{background:#c58b4a}.gray{background:#9a9a9a}.blank{background:#ffffff}
+div[data-testid="stDataFrame"] div[role="gridcell"]{font-size:16px;}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">ES Check List Evidencias</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Operaciones Ropa · Control de evidencias por tienda</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="corp-header">
+  <div class="corp-top">
+    <div>
+      <img class="corp-logo" src="data:image/png;base64,{logo_b64}" />
+    </div>
+    <div>
+      <div class="corp-title">ES Check List Evidencias</div>
+      <div class="corp-subtitle">Matriz de cumplimiento por actividad</div>
+    </div>
+  </div>
+  <div class="corp-bar">Corporativo · Producto Ropa</div>
+</div>
+""".format(logo_b64=PRICE_LOGO.read_bytes().hex() if False else ""), unsafe_allow_html=True)
+
+# Render logo as base64 compatible with Streamlit HTML
+import base64
+def render_corporate_header():
+    logo_html = ""
+    try:
+        logo_b64 = base64.b64encode(PRICE_LOGO.read_bytes()).decode("utf-8")
+        logo_html = f'<img class="corp-logo" src="data:image/png;base64,{logo_b64}" />'
+    except Exception:
+        logo_html = "<strong>Price Shoes</strong>"
+    st.markdown(f"""
+    <div class="corp-header">
+      <div class="corp-top">
+        <div>{logo_html}</div>
+        <div>
+          <div class="corp-title">ES Check List Evidencias</div>
+          <div class="corp-subtitle">Matriz de cumplimiento por actividad</div>
+        </div>
+      </div>
+      <div class="corp-bar">Corporativo · Producto Ropa</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+render_corporate_header()
 
 config = load_config()
 evidencias = load_evidences()
@@ -637,13 +816,16 @@ with tab1:
     st.caption("El cumplimiento considera evidencias aceptadas. En administración, cada punto puede modificarse desde su propio menú y también puede marcarse como N/A.")
     st.markdown(render_portal_table(matrix), unsafe_allow_html=True)
 
-    pdf_buffer = make_matrix_pdf(matrix, f"ES Check List Evidencias | {semana}")
-    st.download_button(
-        "📄 Descargar checklist como PDF",
-        data=pdf_buffer.getvalue(),
-        file_name=f"ES_Check_List_Evidencias_{semana}.pdf".replace(" ", "_"),
-        mime="application/pdf"
-    )
+    try:
+        pdf_buffer = make_matrix_pdf(matrix, f"ES Check List Evidencias | {semana}")
+        st.download_button(
+            "📄 Descargar checklist como PDF",
+            data=pdf_buffer.getvalue(),
+            file_name=f"ES_Check_List_Evidencias_{semana}.pdf".replace(" ", "_"),
+            mime="application/pdf"
+        )
+    except Exception as e:
+        st.warning("No fue posible generar el PDF. Descarga el Excel o intenta con menos columnas activas.")
 
     if is_admin:
         st.divider()
@@ -720,7 +902,7 @@ with tab1:
             editor_df = matrix_to_admin_editor(matrix, active_concepts)
             edited_matrix = st.data_editor(
                 editor_df,
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
                 disabled=["Tienda"],
                 key=f"editor_checklist_general_{semana}",
@@ -776,7 +958,7 @@ with tab1:
             with right_evidence:
                 st.markdown("**Evidencias ligadas a este punto**")
                 if not ev_subset.empty:
-                    st.dataframe(ev_subset[["ID", "Estatus", "Responsable", "Fecha_Carga", "Comentario_Tienda"]], width="stretch", hide_index=True)
+                    st.dataframe(ev_subset[["ID", "Estatus", "Responsable", "Fecha_Carga", "Comentario_Tienda"]], use_container_width=True, hide_index=True)
                 else:
                     st.info("Sin evidencias cargadas para este punto.")
 
@@ -900,14 +1082,14 @@ with tab2:
                     st.success("Evidencia eliminada.")
                     st.rerun()
 
-        st.dataframe(mis_evidencias, width="stretch", hide_index=True)
+        st.dataframe(mis_evidencias, use_container_width=True, hide_index=True)
 
 if is_admin:
     with tab3:
         st.subheader("Control general de evidencias")
         control_df = make_activity_control(evidencias, config, semana, manual)
         st.caption("Concentrado general por tienda y actividad. Aquí se ve el cumplimiento de cada actividad del checklist.")
-        st.dataframe(control_df, width="stretch", hide_index=True)
+        st.dataframe(control_df, use_container_width=True, hide_index=True)
 
         control_excel = BytesIO()
         control_df.to_excel(control_excel, index=False, engine="openpyxl")
@@ -947,7 +1129,7 @@ if is_admin:
                     archivo = str(row["Archivo"])
                     if archivo and Path(archivo).exists():
                         if Path(archivo).suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
-                            st.image(archivo, width="stretch")
+                            st.image(archivo, use_container_width=True)
                         else:
                             st.write(f"Archivo: {Path(archivo).name}")
                     comentario_admin = st.text_area("Comentario administrador", value=str(row.get("Comentario_Admin", "")), key=f"coment_{row['ID']}")
@@ -1013,7 +1195,7 @@ if is_admin:
         edited = st.data_editor(
             config,
             num_rows="dynamic",
-            width="stretch",
+            use_container_width=True,
             column_config={
                 "Concepto": st.column_config.TextColumn("Encabezado / Concepto", required=True),
                 "Peso": st.column_config.NumberColumn("Peso", min_value=0, step=1),
