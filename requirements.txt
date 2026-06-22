@@ -1,8 +1,5 @@
-# ES Check List Evidencias v22
-
-Cambios:
-- Encabezado corregido para evitar recorte.
-- Logo embebido y también disponible en assets.
-- Matriz principal con casillas tipo estatus: al seleccionar una celda despliega menú.
-- % Cumplimiento visible en la matriz principal.
-- PDF corporativo legible.
+streamlit
+pandas
+openpyxl
+pillow
+reportlab
